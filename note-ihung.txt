@@ -1,0 +1,14 @@
+Installation:
+1. First copy isi-flexnlp from /nas/home/rujunhan/isi-flexnlp
+2. cd isi-flexnlp
+3. pip install -r requirements.txt
+4. pip install -e .
+5. python -m spacy download en
+
+=======================================================================
+
+
+ldcxxx.py is for data process
+featureFuncs.py stores utility functions that generate linguistic features.
+baseline for Ning's model??? (Hypothesis)
+
