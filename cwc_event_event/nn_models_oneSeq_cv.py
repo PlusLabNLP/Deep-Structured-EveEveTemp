@@ -502,14 +502,14 @@ class NNClassifier(REDEveEveRelModel):
                 labels.append(label) 
                 
                 # batch computation                                                                                                                                                            
-                if count % args.batch == 0 or count == total_samples:                                                                                                                          
+                if count % args.batch == 0 or count == total_samples: # total_samples not define)                                                                                                                 
                     sents = (Variable(torch.LongTensor(np.array(sents).transpose())), 
                              Variable(torch.LongTensor(np.array(poss).transpose())),
-                             Variable(torch.FloatTensor(np.array(ftss))))
+                             Variable(torch.FloatTensor(np.array(ftss)))) # additional features is here!!!
                                                   
                     labels = Variable(torch.LongTensor(np.array(labels)))                                                                                                                                                                                               
                     model.zero_grad()                                                                                                                                 
-                    is_causal = (data_id[0] == 'C')
+                    is_causal = (data_id[0] == 'C') # need to check what does this means
                     out, prob = model(labels, sents, lidx_start, lidx_end, ridx_start, ridx_end, flip=rev, causal=is_causal)                                                                                                    
                     out = out.view(labels.size()[0], -1)                                                                                     
                     loss = criterion(out, labels)                                                                                                                                              
@@ -539,7 +539,7 @@ class NNClassifier(REDEveEveRelModel):
             # Evaluate at the end of each epoch                                 
                                                                                  
             print("*"*50)
-            print(len(eval_data))
+            print('eval_data', len(eval_data))
             # select model only based on temporal F1 if refit on train / eval split
             # if doing final fitting based on train and epoch from CV, then only use all train data
             if len(eval_data) > 0:
@@ -661,7 +661,6 @@ class NNClassifier(REDEveEveRelModel):
             label_map = new_label_map
 
         all_labels = list(OrderedDict.fromkeys(label_map.values()))
-
         if args.joint:
             label_map_c = causal_label_map
             # in order to perserve order of unique keys
@@ -695,7 +694,6 @@ class NNClassifier(REDEveEveRelModel):
         ### collect data features before running models
         with mp.Pool(processes=2) as pool:
             data = pool.map(partial(self.parallel, args = args), train_data)
-
         if args.cv == True:
             best_params = self.cross_validation(data, emb, pos_emb, args)
 
@@ -706,7 +704,7 @@ class NNClassifier(REDEveEveRelModel):
             for k,v in best_params.items():
                 exec("args.%s=%s" % (k, v))
         
-        if args.data_type in ['new']:
+        if args.data_type in ['new', 'matres']:
             train_docs, dev_docs = train_test_split(args.train_docs, test_size=0.2, random_state=7)
 
         # Both RED and TBDense data have give splits on train/dev/test
@@ -714,13 +712,15 @@ class NNClassifier(REDEveEveRelModel):
             train_docs = args.train_docs 
             dev_docs = args.dev_docs
 
-        print(len(train_docs), len(dev_docs))
+        print('train_docs:', len(train_docs))
+        print('dev_docs:', len(dev_docs))
         if args.refit_all:
             train_docs = args.train_docs
             dev_docs = []
         
         train_data, dev_data = self.data_split(train_docs, dev_docs, data, args.nr)
-        print(len(train_data), len(dev_data))
+        print('train_data:', len(train_data))
+        print('dev_data:', len(dev_data))
 
         best_f1, _ = self._train(train_data, dev_data, emb, pos_emb, args)
         print("Final Dev F1: %.4f" % best_f1)
@@ -829,13 +829,13 @@ def main(args):
     train_data = list(read_relations(Path(data_dir), 'train', **opt_args))
     dev_data = []
     
-    if args.data_type in ["red", "tbd", "matres"]:
+    #if args.data_type in ["red", "tbd", "matres"]:
+    if args.data_type in ["red", "tbd"]:
         dev_data = list(read_relations(Path(data_dir), 'dev', **opt_args))
     
     # combine train and dev
     # either CV or split by specific file name later
     train_data += dev_data
-
     test_data = list(read_relations(Path(data_dir), 'test', **opt_args))
     models = [NNClassifier()]
     for model in models:
@@ -870,24 +870,24 @@ if __name__ == '__main__':
     p.add_argument('-model', type=str, default='rnn')
 
     # arguments for RNN model
-    p.add_argument('-emb', type=int, default=100)
-    p.add_argument('-hid', type=int, default=40)
+    p.add_argument('-emb', type=int, default=300) #ori 100
+    p.add_argument('-hid', type=int, default=50) #ori 40
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-batch', type=int, default=1)
+    p.add_argument('-batch', type=int, default=16) # original 1
     p.add_argument('-data_type', type=str, default="red")
     p.add_argument('-epochs', type=int, default=20)
     p.add_argument('-seed', type=int, default=123)
     p.add_argument('-lr', type=float, default=0.0005)
     p.add_argument('-num_classes', type=int, default=2) # get updated in main()
-    p.add_argument('-dropout', type=float, default=0.2)
-    p.add_argument('-ngbrs', type=int, default = 15)                                   
+    p.add_argument('-dropout', type=float, default=0.2) # 0.4
+    p.add_argument('-ngbrs', type=int, default = 15) #?                                   
     p.add_argument('-pos2idx', type=dict, default = {})
     p.add_argument('-w2i', type=OrderedDict)
     p.add_argument('-glove', type=OrderedDict)
     p.add_argument('-cuda', type=bool, default=False)
     p.add_argument('-refit_all', type=bool, default=False)
     p.add_argument('-params', type=dict, default={})
-    p.add_argument('-n_splits', type=int, default=5)
+    p.add_argument('-n_splits', type=int, default=5) #?
     p.add_argument('-pred_win', type=int, default=200)
     p.add_argument('-n_fts', type=int, default=15)
     # arguments for CNN model
@@ -895,39 +895,42 @@ if __name__ == '__main__':
     p.add_argument('-kernel', type=int, default = 5)
     p.add_argument('-train_docs', type=list, default=[])
     p.add_argument('-dev_docs', type=list, default=[])
-    p.add_argument('-cv', type=bool, default=False)
+    p.add_argument('-cv', type=bool, default=True)
     p.add_argument('-attention', type=bool, default=False)
     p.add_argument('-save_model', type=bool, default=True)
-    p.add_argument('-save_stamp', type=str, default="tbd_1125_hid40_dropout20")
-    p.add_argument('-ilp_dir', type=str, default="/nas/home/rujunhan/ILP/")
+    p.add_argument('-save_stamp', type=str, default="tcr_0721_hid50_dropout0.5")
+    p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-joint', type=bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
     args = p.parse_args()
     
     #args.eval_list = ['train', 'dev', 'test']
-    
     args.eval_list = []
-    args.data_type = "tbd"
     if args.data_type == "red":
-        args.data_dir = "/nas/home/rujunhan/red_output/"
+        #args.data_dir = "/nas/home/rujunhan/red_output/"
+        args.data_dir = "../output_data/red_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "new":
-        args.data_dir = "/nas/home/rujunhan/tcr_output/"
+        #args.data_dir = "/nas/home/rujunhan/tcr_output/"
+        args.data_dir = "../output_data/tcr_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')] 
     elif args.data_type == "matres":
-        args.data_dir = "/nas/home/rujunhan/matres_output/"
+        #args.data_dir = "/nas/home/rujunhan/matres_output/"
+        args.data_dir = "../output_data/matres_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "tbd":
-        args.data_dir = "/nas/home/rujunhan/tbd_output/"
+        #args.data_dir = "/nas/home/rujunhan/tbd_output/"
+        args.data_dir = "../output_data/tbd_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
 
     # create pos_tag and vocabulary dictionaries
     # make sure raw data files are stored in the same directory as train/dev/test data
     
-    tags = open("/nas/home/rujunhan/tcr_output/pos_tags.txt")
+    #tags = open("/nas/home/rujunhan/tcr_output/pos_tags.txt")
+    tags = open("../output_data/tcr_output/pos_tags.txt")
     pos2idx = {}
     idx = 0
     for tag in tags:
@@ -939,7 +942,8 @@ if __name__ == '__main__':
     
     args.pred_win = args.ngbrs * 2
 
-    args.glove = read_glove("/nas/home/rujunhan/red_output/glove/glove.6B.%sd.txt" % args.emb)
+    #args.glove = read_glove("/nas/home/rujunhan/red_output/glove/glove.6B.%sd.txt" % args.emb)
+    args.glove = read_glove("../output_data/red_output/glove/glove.6B.%sd.txt" % args.emb)
     vocab = np.array(['<pad>', '<unk>'] + list(args.glove.keys()))
     args.w2i = OrderedDict((vocab[i], i) for i in range(len(vocab)))
 

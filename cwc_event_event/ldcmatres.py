@@ -309,7 +309,7 @@ def tb_dense(dir_path):
         doc_id = line[0]
         ent1 = line[1]
         ent2 = line[2]
-        ent1_id = "e" + line[3]
+        ent1_id = "e" + line[3] # why not "ei" ???
         ent2_id = "e" + line[4]
         label = line[5]
 
@@ -345,7 +345,7 @@ if __name__ == '__main__':
     
     args.task = 'flexnlp'
     args.dir = Path('/nas/home/rujunhan/data/TBDense/')
-    args.out = Path('/nas/home/rujunhan/matres_output/')
+    args.out = Path('./matres_output/')
     print(args)
 
     args.dense_pairs = tb_dense(args.dir)

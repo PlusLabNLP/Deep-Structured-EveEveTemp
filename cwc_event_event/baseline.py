@@ -178,7 +178,6 @@ def read_relations(data_dir: Path,
         with file.open('rb') as fh:
             doc = pickle.load(fh)
         
-        print('doc', doc)
         all_events = [k for k,v in doc.entities.items() if v.type in ['EVENT', 'TIMEX3']]
     
         all_timex = [v for _,v in doc.entities.items() if v.type in ['TIMEX3']]
