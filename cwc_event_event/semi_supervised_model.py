@@ -837,7 +837,7 @@ if __name__ == '__main__':
     p.add_argument('-num_layers', type=int, default=1)
     p.add_argument('-batch', type=int, default=1)
     p.add_argument('-data_type', type=str, default="red")
-    p.add_argument('-epochs', type=int, default=0)
+    p.add_argument('-epochs', type=int, default=20)
     p.add_argument('-seed', type=int, default=123)
     p.add_argument('-lr', type=float, default=0.0005)
     p.add_argument('-num_classes', type=int, default=2) # get updated in main()
@@ -855,8 +855,8 @@ if __name__ == '__main__':
     p.add_argument('-unlabeled_weight', type=float, default=0.1)
     p.add_argument('-eval_with_timex', type=bool, default=True)
     p.add_argument('-shuffle', type=bool, default=False)
-    p.add_argument('-xi', type=float, default=1e-3)
-    p.add_argument('-eps',type=float, default=2.5) #[2.5]
+    p.add_argument('-xi', type=float, default=1e-3) #??
+    p.add_argument('-eps',type=float, default=2.5) #[2.5] ??
     # arguments for CNN model
     p.add_argument('-stride', type=int, default = 1)
     p.add_argument('-kernel', type=int, default = 5)
@@ -866,11 +866,11 @@ if __name__ == '__main__':
     p.add_argument('-cv_shuffle', type=bool, default=False)
     p.add_argument('-attention', type=bool, default=False)
     p.add_argument('-backward_sample', type=bool, default=True)
-    p.add_argument('-save_model', type=bool, default=False)
-    p.add_argument('--save_stamp', type=str, default="0301_matres_local_100_0.2_no_flip")
-    p.add_argument('-ilp_dir', type=str, default="/nas/home/rujunhan/ILP/")
-    p.add_argument('-load_model', type=bool, default=True)
-    p.add_argument('-load_model_file', type=str, default= '0226_tbd_local_50_0.4.pth.tar') #tbd_1121.pth.tar')
+    p.add_argument('-save_model', type=bool, default=True)
+    p.add_argument('--save_stamp', type=str, default="0721_tcr_local_300_50_no_flip")
+    p.add_argument('-ilp_dir', type=str, default="..//ILP/")
+    p.add_argument('-load_model', type=bool, default=False)
+    p.add_argument('-load_model_file', type=str, default= '0226_tbd_local_50_0.4.pth.tar')
     p.add_argument('-joint', type=bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
     p.add_argument('-loss_u', type=str, default='')
@@ -883,28 +883,33 @@ if __name__ == '__main__':
     
     #args.eval_list = ['train', 'dev', 'test']
     args.eval_list = []
-    args.data_type = "tbd"
+    #args.data_type = "tbd"
     if args.data_type == "red":
-        args.data_dir = "/nas/home/rujunhan/red_output/"
+        #args.data_dir = "/nas/home/rujunhan/red_output/"
+        args.data_dir = "../output_data/red_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "new":
-        args.data_dir = "/nas/home/rujunhan/tcr_output/"
+        #args.data_dir = "/nas/home/rujunhan/tcr_output/"
+        args.data_dir = "../output_data/tcr_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')] 
     elif args.data_type == "matres":
-        args.data_dir = "/nas/home/rujunhan/matres_output/"
+        #args.data_dir = "/nas/home/rujunhan/matres_output/"
+        args.data_dir = "../output_data/matres_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "tbd":
-        args.data_dir = "/nas/home/rujunhan/tbd_output/"
+        #args.data_dir = "/nas/home/rujunhan/tbd_output/"
+        args.data_dir = "../output_data/tbd_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
 
-    args.data_dir_u = "/nas/home/rujunhan/te3sv_output/"
+    args.data_dir_u = "../output_data/te3sv_output/"
     # create pos_tag and vocabulary dictionaries
     # make sure raw data files are stored in the same directory as train/dev/test data
     
-    tags = open("/nas/home/rujunhan/tcr_output/pos_tags.txt")
+    #tags = open("/nas/home/rujunhan/tcr_output/pos_tags.txt")
+    tags = open("../output_data/tcr_output/pos_tags.txt")
     pos2idx = {}
     idx = 0
     for tag in tags:

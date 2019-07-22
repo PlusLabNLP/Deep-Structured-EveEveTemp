@@ -10,5 +10,8 @@ Installation:
 
 ldcxxx.py is for data process
 featureFuncs.py stores utility functions that generate linguistic features.
-baseline for Ning's model??? (Hypothesis)
+emb_reduced is a numpy array that store reduced embedding. Its shape is (vocab_size, 300)
+  the vocab_size is depending on the dataset. We can find the mapping in glove2vocab.
+  its a mapping from "vocab_id in glove" to "current vocab id". e.g, "we" is id 400 in 
+  glove, but it is id 200 in emb_array. Then, it will show 400:200 in glove2vocab
 

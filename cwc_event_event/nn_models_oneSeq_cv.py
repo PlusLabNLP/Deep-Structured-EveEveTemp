@@ -69,6 +69,7 @@ class BiLSTM(nn.Module):
         self.lstm = nn.LSTM(self.embed_size + self.num_pos_tags, self.hid_size, self.num_layers, bias = False, bidirectional=True)
 
         self.linear1 = nn.Linear(self.hid_size*4+args.n_fts, self.hid_size)
+        #self.linear1 = nn.Linear(self.hid_size*4, self.hid_size)
         self.linear2 = nn.Linear(self.hid_size, self.num_classes)
         self.linear_c = nn.Linear(self.hid_size, self.num_causal) 
         self.linear_attn = nn.Linear(self.hid_size, self.hid_size)
@@ -155,7 +156,7 @@ class BiLSTM(nn.Module):
             tar = self.dropout(torch.cat((ltar_f, ltar_b, rtar_f, rtar_b), dim=1))
 
         out = torch.cat((tar, sent[2]), dim=1)
-        
+        #out = tar
         # linear prediction
         out = self.linear1(out)
         out = self.act(out)
