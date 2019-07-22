@@ -20,8 +20,9 @@ import logging as log
 from ldctcr import NewDoc, NewRelation, NewEntity
 from ldctbd import TBDDoc, TBDRelation, TBDEntity
 from ldcte3sv import TESVDoc, TESVRelation, TESVEntity
-from pytorch_pretrained_bert.modeling import BertModel, BertConfig, PreTrainedBertModel
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+#from pytorch_pretrained_bert.modeling import BertModel, BertConfig, PreTrainedBertModel
+#from pytorch_pretrained_bert.tokenization import BertTokenizer
+from pytorch_transformers import BertModel, BertTokenizer
 from sklearn.utils import resample
 import os
 import torch
@@ -716,7 +717,7 @@ if __name__ == '__main__':
         args.data_dir = "/nas/home/rujunhan/tcr_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "matres":
-        args.data_dir = "/nas/home/rujunhan/matres_output/"
+        args.data_dir = "../output_data/matres_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "tbd":

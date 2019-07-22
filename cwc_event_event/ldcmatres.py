@@ -73,9 +73,9 @@ class TBDRelation():
         try:
             source = source[0] + 'i' + source[1:] if source[0] == 'e' else source
         except:
-            print(pair)
-            print(label)
-            print(source)
+            print('pair', pair)
+            print('label', label)
+            print('source', source)
             kill
 
         target = target[0] + 'i' + target[1:] if target[0] =='e' else target
@@ -143,12 +143,6 @@ class TBDDoc:
             entities = events #+ timexs
             entities = OrderedDict([(e.id, e) for e in entities])
         
-            #for k in entities.keys():
-            #    print(k)
-
-            #print(raw_text)
-            #print(entities)
-
             relations = []
             pos_pairs = []
 
@@ -213,24 +207,21 @@ class PackageReader:
 
         src_to_id = {k: v for k,v in src_to_id.items() if v in self.all_samples.keys()}
 
-        #for x in sorted(list(src_to_id.values())):
-        #    print(x)
-            
         # MATRES is missing one docs from original TBDENSE
         # this docs contain very few event pairs (<10)
         assert len(src_to_id) == 35
 
-        self.train_files = {k:v for k,v in list(src_to_id.items()) if v not in test_files}# + dev_files}
-        #self.dev_files = {k:v for k,v in list(src_to_id.items()) if v in dev_files}
+        self.train_files = {k:v for k,v in list(src_to_id.items()) if v not in (test_files+dev_files)}# + dev_files}
+        self.dev_files = {k:v for k,v in list(src_to_id.items()) if v in dev_files}
         self.test_files = {k:v for k,v in list(src_to_id.items()) if v in test_files}
 
-        assert len(self.train_files)  + len(self.test_files) == len(src_to_id)
-
+        #assert len(self.train_files)  + len(self.test_files) == len(src_to_id)
+        assert len(self.train_files)+ len(self.dev_files) + len(self.test_files) == len(src_to_id)
 
     def read_split(self, split_name) -> Iterator[TBDDoc]:
-        assert split_name in ('train','test')
+        assert split_name in ('train','dev','test')
 
-        src_id_map = {'train': self.train_files,  'test': self.test_files}[split_name]
+        src_id_map = {'train': self.train_files, 'dev': self.dev_files,  'test': self.test_files}[split_name]
         
         for src_file, doc_id in src_id_map.items():
             doc = TBDDoc(doc_id)
@@ -319,6 +310,8 @@ def tb_dense(dir_path):
             else:
                 all_samples[doc_id] = {(ent1_id, ent2_id): (label, (ent1, ent2))}
             count += 1
+        else:
+            print('doc_id', doc_id)
 
     docs_m = list(all_samples.keys())
     for d in docs:
@@ -327,7 +320,6 @@ def tb_dense(dir_path):
     
     print("Total %s MATRES samples included" % count)
     print("Total %s MATRES docs processed" % len(docs_m))
-    
     return all_samples
 
 
@@ -344,8 +336,8 @@ if __name__ == '__main__':
     args = p.parse_args()
     
     args.task = 'flexnlp'
-    args.dir = Path('/nas/home/rujunhan/data/TBDense/')
-    args.out = Path('./matres_output/')
+    args.dir = Path('../raw_data/TBDense/')
+    args.out = Path('../output_data/matres_output/')
     print(args)
 
     args.dense_pairs = tb_dense(args.dir)
@@ -358,5 +350,6 @@ if __name__ == '__main__':
             export_json_lines(pr, out)
     elif args.task == 'flexnlp':
         assert not args.out.exists() or args.out.is_dir()
-        flexnlp_annotate(pr, args.out, splits = ["train",  "test"])
+        #flexnlp_annotate(pr, args.out, splits = ["train",  "test"])
+        flexnlp_annotate(pr, args.out, splits = ["train",  "dev", "test"])
     

@@ -26,7 +26,7 @@ import time
 import copy
 from baseline import FlatRelation, print_annotation_stats, print_flat_relation_stats, read_relations, all_red_labels, REDEveEveRelModel, ClassificationReport, matres_label_map, tbd_label_map, new_label_map, red_label_map, rev_map, causal_label_map
 from featureFuncs import *
-from nn_models_oneSeq_cv import BiLSTM
+from nn_model import BiLSTM
 import multiprocessing as mp
 from functools import partial
 from sklearn.model_selection import KFold, ParameterGrid, train_test_split
@@ -239,15 +239,13 @@ class NNClassifier(REDEveEveRelModel):
             loss_hist_t, loss_hist_u, loss_hist_c = [], [], []
 
             start_time = time.time()
+            print('len train_data', len(train_data))
             for _, data_id, _, labels, sents, poss, ftss, rev, lidx_start, lidx_end, ridx_start, ridx_end, _ in train_data:
                 
                 data_id = data_id[0] 
-
                 is_causal = (data_id[0] == 'C')
-
                 if data_id[0] == 'U' and (args.skip_u or not args.loss_u):
                     continue
-                    
                 sents = sents.reshape(-1, args.batch)
                 poss = poss.reshape(-1, args.batch)
                 
@@ -330,7 +328,6 @@ class NNClassifier(REDEveEveRelModel):
             # if doing final fitting based on train and epoch from CV, then only use all train data
             if len(eval_data) > 0:
                 # 0:doc_id, 1:ex.id, 2:(ex.left.id, ex.right.id), 3:label_id, 4:features 
-
                 eval_preds, eval_loss, eval_labels = self.predict(model, eval_data, args)
                 if args.backward_sample:
                     pred_labels = eval_preds
@@ -412,7 +409,7 @@ class NNClassifier(REDEveEveRelModel):
         # Need to modify this with batch computation
         return -prob.bmm(log_prob).reshape(1, -1)
 
-
+    # TODO: I-Hung: need to speculate vat loss
     def vat_loss(self, model, label, sent, lidx_start, lidx_end, ridx_start, ridx_end, 
                  pred_inds=[], flip = False, causal =False, xi=1e-6, eps=2.5, num_iters=1):
         # x is sent input tokens
@@ -601,6 +598,7 @@ class NNClassifier(REDEveEveRelModel):
             pos_emb[i, i] = 1.0
 
         # we may want a separate function for clarity
+        # TODO: I-Hung: first pass the bootstrap func.
         if args.bootstrap:
             self.bootstrap(emb, pos_emb, args, test_data)
             return
@@ -778,15 +776,6 @@ def main(args):
     test_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, data_dir_back)
     test_generator = data.DataLoader(test_data, **params)
 
-    #for debug
-    '''
-    for doc_id, sample_id, pair, label, sent, pos, fts, rev, lidx_start_s, lidx_end_s, ridx_start_s, ridx_end_s, pred_ind in train_generator:
-        print(doc_id)
-        print(sample_id)
-        print(label)
-        print(fts)
-        kill
-    '''
     models = [NNClassifier()]
     for model in models:
         print(f"\n======={model.name}=====")
@@ -836,12 +825,12 @@ if __name__ == '__main__':
     p.add_argument('--hid', type=int, default=50)
     p.add_argument('-num_layers', type=int, default=1)
     p.add_argument('-batch', type=int, default=1)
-    p.add_argument('-data_type', type=str, default="red")
+    p.add_argument('-data_type', type=str, default="new")
     p.add_argument('-epochs', type=int, default=20)
     p.add_argument('-seed', type=int, default=123)
     p.add_argument('-lr', type=float, default=0.0005)
     p.add_argument('-num_classes', type=int, default=2) # get updated in main()
-    p.add_argument('--dropout', type=float, default=0.6)
+    p.add_argument('--dropout', type=float, default=0.4)
     p.add_argument('-ngbrs', type=int, default = 20)                                   
     p.add_argument('-pos2idx', type=dict, default = {})
     p.add_argument('-emb_array', type=np.array)
@@ -865,10 +854,10 @@ if __name__ == '__main__':
     p.add_argument('-cv', type=bool, default=False)
     p.add_argument('-cv_shuffle', type=bool, default=False)
     p.add_argument('-attention', type=bool, default=False)
-    p.add_argument('-backward_sample', type=bool, default=True)
+    p.add_argument('-backward_sample', type=bool, default=False) # previously True
     p.add_argument('-save_model', type=bool, default=True)
-    p.add_argument('--save_stamp', type=str, default="0721_tcr_local_300_50_no_flip")
-    p.add_argument('-ilp_dir', type=str, default="..//ILP/")
+    p.add_argument('--save_stamp', type=str, default="0721_tbd_local_300_50_no_flip")
+    p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=bool, default=False)
     p.add_argument('-load_model_file', type=str, default= '0226_tbd_local_50_0.4.pth.tar')
     p.add_argument('-joint', type=bool, default=False)
@@ -876,6 +865,7 @@ if __name__ == '__main__':
     p.add_argument('-loss_u', type=str, default='')
     p.add_argument('-skip_u', type=bool, default=True)
     p.add_argument('-bert_fts', type=bool, default=False)
+    p.add_argument('-usefeature', type=bool, default=False)
     # bootstrap options
     p.add_argument('-bootstrap', type=bool, default=False)
     p.add_argument('-bs_list', type=list, default=list(range(0, 5)))
@@ -883,7 +873,7 @@ if __name__ == '__main__':
     
     #args.eval_list = ['train', 'dev', 'test']
     args.eval_list = []
-    #args.data_type = "tbd"
+    args.usefeature = False
     if args.data_type == "red":
         #args.data_dir = "/nas/home/rujunhan/red_output/"
         args.data_dir = "../output_data/red_output/"
@@ -928,8 +918,8 @@ if __name__ == '__main__':
     i2w = {v:k for k,v in w2i.items()}
     np.save('i2w.npy', i2w)
     '''
-    args.emb_array = np.load(args.data_dir + 'all' + '/emb_reduced.npy')
-    args.glove2vocab = np.load(args.data_dir + 'all' + '/glove2vocab.npy').item()
+    args.emb_array = np.load(args.data_dir + 'all' + '/emb_reduced.npy', allow_pickle=True)
+    args.glove2vocab = np.load(args.data_dir + 'all' + '/glove2vocab.npy', allow_pickle=True).item()
 
     '''
     v2g = {v:k for k,v in args.glove2vocab.items()}
@@ -943,7 +933,9 @@ if __name__ == '__main__':
     args.skip_other = True
     
     #args.params = {'hid': [40], 'unlabeled_weight': [0.1], 'dropout': [0.1, 0.2]}#, 0.3, 0.4]}#, 'xi':[1e-5, 1e-4, 1e-2, 1e-1]}
-    args.params = {'hid': [args.hid], 'unlabeled_weight': [0.1], 'dropout': [args.dropout]}
+    args.params = {'hid': [args.hid], 'unlabeled_weight': [0.0], 'dropout': [args.dropout]}
     #args.params = {'hid': [30], 'unlabeled_weight': [0.1], 'dropout': [0.6, 0.7, 0.8, 0.9]}
     print(args.hid, args.dropout)
+    print('joint', args.joint)
+    print(args)
     main(args)

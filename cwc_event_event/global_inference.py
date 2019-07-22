@@ -33,8 +33,7 @@ from sklearn.model_selection import KFold, ParameterGrid, train_test_split
 from ldctcr import NewDoc, NewRelation, NewEntity
 from ldctbd import TBDDoc, TBDRelation, TBDEntity
 from temporal_evaluation import *
-from nn_models_oneSeq_cv import BiLSTM
-#from semi_supervised_model import EventDataset
+from nn_model import BiLSTM
  
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -505,7 +504,7 @@ class NNClassifier(REDEveEveRelModel):
 
         return train_set, eval_set, train_pairs, eval_pairs
 
-    def cross_validation(self, data, emb, pos_emb, args, pairs):
+    def cross_validation(self, emb, pos_emb, args, pairs):
         
         param_perf = []
         for param in ParameterGrid(args.params):
@@ -582,6 +581,7 @@ class NNClassifier(REDEveEveRelModel):
             self._label_to_id_c = OrderedDict([(all_labels_c[l],l) for l in range(len(all_labels_c))])
             self._id_to_label_c = OrderedDict([(l,all_labels_c[l]) for l in range(len(all_labels_c))])
             print(self._label_to_id_c)
+            print(self._id_to_label_c)
 
         self._label_to_id = OrderedDict([(all_labels[l],l) for l in range(len(all_labels))])
         self._id_to_label = OrderedDict([(l,all_labels[l]) for l in range(len(all_labels))])
@@ -601,22 +601,9 @@ class NNClassifier(REDEveEveRelModel):
         pos_emb= np.zeros((len(args.pos2idx) + 1, len(args.pos2idx) + 1))
         for i in range(pos_emb.shape[0]):
             pos_emb[i, i] = 1.0
-
-        # for debug
-        #for ex in train_data:
-            #    self.create_features_tbd(ex, args)
-
-        # re-arrange order of T and C for model training
-        # run TCR in NAACL pipeline
-        #train_data = [ex for ex in train_data if ex.id[0] != 'C'] + [ex for ex in train_data if ex.id[0] == 'C']
-
-        ### collect data features before running models
-        #with mp.Pool(processes=2) as pool:
-        #    data = pool.map(partial(self.parallel, args = args), train_data)
-        #print(len(data))
        
         if args.cv == True:
-            best_params = self.cross_validation(data, emb, pos_emb, args, pairs)
+            best_params = self.cross_validation(emb, pos_emb, args, pairs)
             print(best_params)
             ### retrain on the best parameters
             print("To refit...")
@@ -624,13 +611,6 @@ class NNClassifier(REDEveEveRelModel):
 
             for k,v in best_params.items():
                 exec("args.%s=%s" % (k, v))
-
-        #if args.data_type in ['new', 'tbd']:#, 'matres']:
-        #    args.train_docs = args.train_docs + args.dev_docs
-        #    train_docs, dev_docs = train_test_split(args.train_docs, test_size=0.2, random_state = 100)#7)
-        #else:
-        #    train_docs = args.train_docs 
-        #    dev_docs = args.dev_docs
 
         # refit on all training data
         if args.refit_all:
@@ -866,16 +846,6 @@ def main(args):
     if args.backward_sample:
         data_dir_back = args.data_dir + "all_backward/"
 
-    '''
-    type_dir_temp = "cv/fold3/"
-    data_dir_back_temp = ""
-    train_data = EventDataset(args.data_dir + type_dir_temp, "train", args.glove2vocab, data_dir_back_temp)
-    train_generator = data.DataLoader(train_data, **params)
-
-    dev_data = EventDataset(args.data_dir + type_dir_temp, "dev", args.glove2vocab, data_dir_back_temp)
-    dev_generator = data.DataLoader(dev_data, **params)
-    
-    '''
     train_data = EventDataset(args.data_dir + type_dir, "train", args.glove2vocab, data_dir_back)
     train_generator = data.DataLoader(train_data, **params)
 
@@ -934,9 +904,9 @@ if __name__ == '__main__':
     p.add_argument('-batch', type=int, default=1)
     p.add_argument('-data_type', type=str, default="red")
     p.add_argument('-epochs', type=int, default=3)
-    p.add_argument('--lr', type=float, default=0.01) ## 0.005 best for TCR dataset
-    p.add_argument('--decay', type=float, default=0.4)
-    p.add_argument('--momentum', type=float, default=0.9)
+    p.add_argument('--lr', type=float, default=0.01) # 0.01 for TBD, 0.1 for MATRES, 0.05 for TCR
+    p.add_argument('--decay', type=float, default=0.4) # 0.9 for TBD, 0.4 for MATRES, 0.7 for TCR
+    p.add_argument('--momentum', type=float, default=0.9) # 0.9 for TBD, 0.9 for MATRES, 0.7 for TCR
     p.add_argument('-num_classes', type=int, default=2) # get updated in main()
     p.add_argument('-dropout', type=float, default=0.4)
     p.add_argument('-ngbrs', type=int, default = 15)                                   
@@ -959,10 +929,10 @@ if __name__ == '__main__':
     p.add_argument('-cv', type=bool, default=False)
     p.add_argument('-cv_shuffle', type=bool, default=False)
     p.add_argument('-attention', type=bool, default=False)
-    p.add_argument('-backward_sample', type=bool, default=True)
+    p.add_argument('-backward_sample', type=bool, default=True) # TODO: check this
     p.add_argument('-save_model', type=bool, default=True)
-    p.add_argument('--margin', type=float, default=0.3)
-    p.add_argument('-ilp_dir', type=str, default="/nas/home/rujunhan/ILP/")
+    p.add_argument('--margin', type=float, default=0.3) # TODO: check this
+    p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=bool, default=True)
     p.add_argument('-load_model_file', type=str, default= '0226_tbd_local_50_0.4.pth.tar')
                    #'matres_1124_hid30_dropout40.pth.tar')# 'tbd_1121.pth.tar')
@@ -982,28 +952,31 @@ if __name__ == '__main__':
     #args.eval_list = ['train', 'dev', 'test']
     
     args.eval_list = []
-    args.data_type = "tbd"
-
+    #args.data_type = "tbd"
     if args.data_type == "red":
-        args.data_dir = "/nas/home/rujunhan/output/"
+        #args.data_dir = "/nas/home/rujunhan/red_output/"
+        args.data_dir = "../output_data/red_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "new":
-        args.data_dir = "/nas/home/rujunhan/tcr_output/"
+        #args.data_dir = "/nas/home/rujunhan/tcr_output/"
+        args.data_dir = "../output_data/tcr_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')] 
     elif args.data_type == "matres":
-        args.data_dir = "/nas/home/rujunhan/matres_output/"
+        #args.data_dir = "/nas/home/rujunhan/matres_output/"
+        args.data_dir = "../output_data/matres_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
     elif args.data_type == "tbd":
-        args.data_dir = "/nas/home/rujunhan/tbd_output/"
+        #args.data_dir = "/nas/home/rujunhan/tbd_output/"
+        args.data_dir = "../output_data/tbd_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
 
     # create pos_tag and vocabulary dictionaries
     # make sure raw data files are stored in the same directory as train/dev/test data
 
-    tags = open("/nas/home/rujunhan/tcr_output/pos_tags.txt")
+    tags = open("../output_data/tcr_output/pos_tags.txt")
     pos2idx = {}
     idx = 0
     for tag in tags:
@@ -1014,11 +987,6 @@ if __name__ == '__main__':
     args.cuda = False
     
     args.pred_win = args.ngbrs * 2
-
-    #args.glove = read_glove("/nas/home/rujunhan/red_output/glove/glove.6B.%sd.txt" % args.emb)
-    #vocab = np.array(['<pad>', '<unk>'] + list(args.glove.keys()))
-    #args.w2i = OrderedDict((vocab[i], i) for i in range(len(vocab)))
-
     args.emb_array = np.load(args.data_dir + 'all' + '/emb_reduced.npy')
     args.glove2vocab = np.load(args.data_dir + 'all' + '/glove2vocab.npy').item()
 
@@ -1032,6 +1000,7 @@ if __name__ == '__main__':
     if not args.cv:
         print("learning_rate: %s; momentum: %s; decay: %s; margin: %s" % (args.lr, args.momentum, args.decay, args.margin))
 
-    args.params = {'lr': [0.01],  'momentum':[0.9], 'decay':[0.1, 0.5, 0.9]}
+    #args.params = {'lr': [0.01],  'momentum':[0.9], 'decay':[0.1, 0.5, 0.9]}
+    args.params = {'lr': [args.lr],  'momentum':[args.momentum], 'decay':[args.decay]}
 
     main(args)
