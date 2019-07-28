@@ -434,11 +434,11 @@ tbd_label_map = OrderedDict([('VAGUE', 'VAGUE'),
 
 
 rev_map = OrderedDict([('VAGUE', 'VAGUE'),
-                             ('BEFORE', 'AFTER'),
-                             ('AFTER', 'BEFORE'),
-                             ('SIMULTANEOUS', 'SIMULTANEOUS'),
-                             ('INCLUDES', 'IS_INCLUDED'),
-                             ('IS_INCLUDED', 'INCLUDES')
+                       ('BEFORE', 'AFTER'),
+                       ('AFTER', 'BEFORE'),
+                       ('SIMULTANEOUS', 'SIMULTANEOUS'),
+                       ('INCLUDES', 'IS_INCLUDED'),
+                       ('IS_INCLUDED', 'INCLUDES')
                        ])
 
 red_label_map = OrderedDict([('TERMINATES', 'TERMINATES'),
@@ -550,7 +550,7 @@ class RandomBaselineModel(REDEveEveRelModel):
 class ClassificationReport:
 
     def __init__(self, name, true_labels: List[Union[int, str]],
-                 pred_labels: List[Union[int, str]]):
+                 pred_labels: List[Union[int, str]], exclude_vague=True):
 
         assert len(true_labels) == len(pred_labels)
         self.num_tests = len([x for x in true_labels if x != 'NONE'])
@@ -558,9 +558,9 @@ class ClassificationReport:
         self.total_predictions = Counter(pred_labels)
         self.name = name
         self.labels = sorted(set(true_labels) | set(pred_labels))
-        self.exclude_labels = ['NONE']#, 'VAGUE'] if len(self.labels) == 4 else ['NONE']
+        self.exclude_labels = ['NONE','VAGUE'] if exclude_vague else ['NONE']
         self.confusion_mat = self.confusion_matrix(true_labels, pred_labels)
-        self.accuracy = sum(y == y_ for y, y_ in zip(true_labels, pred_labels)) / len(true_labels)
+        self.accuracy = float(sum(y == y_ for y, y_ in zip(true_labels, pred_labels)))/float(len(true_labels))
         self.trim_label_width = 15
 
     @staticmethod

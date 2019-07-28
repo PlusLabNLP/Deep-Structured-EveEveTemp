@@ -1,6 +1,6 @@
 sklearn
-scipy==1.0.0
+scipy
 flexnlp
 spacy
-pytorch
-
+pytorch>=1.1.0
+tensorboardX

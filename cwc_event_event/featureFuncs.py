@@ -240,3 +240,12 @@ def bert_features(lidx_start, lidx_end, ridx_start, ridx_end, sent, bert_model):
     out = torch.cat((left, right), dim=1).data.numpy()
 
     return list(out[0,:])
+
+def togpu(net):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return net.to(device)
+
+def togpu_data(data):
+    seq_lens, data_id, pairs, labels, sents, poss, fts, revs, l_starts, l_ends, r_starts, r_ends, pred_inds = data
+    return(togpu(seq_lens), data_id, pairs, togpu(labels), togpu(sents), togpu(poss),
+           togpu(fts), revs, togpu(l_starts), togpu(l_ends), togpu(r_starts), togpu(r_ends), pred_inds)

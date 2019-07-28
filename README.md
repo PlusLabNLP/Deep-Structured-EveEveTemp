@@ -5,9 +5,10 @@ Event-Event relations work under DARPA CwC
 
 1. Make a conda environment:
 ```
-conda create -n cwc-event python=3.6
+conda create -n cwc-event python=3.7
 source activate cwc-event
 ```
+
 2. Install FlexNlp (from outside this repository, usually a parent directory)
 ```
 git clone https://github.com/isi-nlp/isi-flexnlp.git
@@ -16,14 +17,14 @@ pip install -r requirements.txt
 pip install -e .
 python -m spacy download en
 ```
-3. Install FlexNlp sandbox (from outside this repository, usually a parent directory):
+3. Install Gurobi
 ```
-git clone git@gitlab.com:isi-nlp/flexnlp-sandbox.git
-cd flexnlp-sandbox
-pip install -e .
+conda config --add channels http://conda.anaconda.org/gurobi
+conda install gurobi
+grbgetkey $YOURGUROBIKEY$
 ```
 
-3. Return to this repository and:
+4. Return to this repository and:
 ```
 pip install -r requirements.txt
 ```
@@ -32,11 +33,6 @@ pip install -r requirements.txt
 
 * `red_to_vista_pickle` ingests RED annotation, converts it to Vista NLP format, and enriches it with spacy annotations
 for feature extraction.
-
-
-
-pip install -r requirements.txt
-```
 
 # Datasets
 
