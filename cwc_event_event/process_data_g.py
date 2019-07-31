@@ -18,7 +18,6 @@ from ldcred import REDDoc, REDRelation, REDEntity
 from ldctcr import NewDoc, NewRelation, NewEntity
 from ldctbd import TBDDoc, TBDRelation, TBDEntity
 from featureFuncs import create_pos_dict, token_idx
-
 import os
 #from nltk.parse import CoreNLPParser
 #parser = CoreNLPParser(url='http://localhost:9000')

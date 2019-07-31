@@ -418,6 +418,10 @@ causal_label_map = OrderedDict([('cause', 'causes'),
                                 ('caused_by', 'caused_by')
                                ])
 
+rev_causal_map = OrderedDict([('causes', 'caused_by'),
+                              ('caused_by', 'causes')
+                               ])
+
 matres_label_map = OrderedDict([('VAGUE', 'VAGUE'),
                              ('BEFORE', 'BEFORE'),
                              ('AFTER', 'AFTER'),
@@ -457,19 +461,6 @@ red_label_map = OrderedDict([('TERMINATES', 'TERMINATES'),
              ('BEFORE/CAUSES', 'BEFORE'),
              ('BEFORE', 'BEFORE'),
              ('NONE', 'NONE')])
-'''
-rev_map = OrderedDict([('BEFORE_rev', 'BEFORE'),
-           ('BEGINS-ON_rev', 'BEGINS-ON'),
-           ('CONTAINS_rev', 'CONTAINS'),
-           ('CONTINUES_rev', 'CONTINUES'),
-           ('ENDS-ON_rev', 'ENDS-ON'),
-           ('INITIATES_rev', 'INITIATES'),
-           ('OVERLAP_rev', 'OVERLAP'),
-           ('REINITIATES_rev', 'REINITIATES'),
-           ('SIMULTANEOUS_rev', 'SIMULTANEOUS'),
-           ('TERMINATES_rev', 'TERMINATES'),
-           ('NONE', 'NONE')])
-'''
 
 class REDEveEveRelModel(abc.ABC):
 

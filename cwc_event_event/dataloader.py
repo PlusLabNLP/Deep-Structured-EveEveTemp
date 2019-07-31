@@ -49,6 +49,7 @@ def _collate_fn(l):
     '''
     seq_lens is a LongTensor recording the sentences' length, (batch_size)
     sample_ids is a list of string, start with 'U'/ 'L'/ 'C'
+    doc_ids is a list of string
     pairs is a list of tuple
     labels is a LongTensor recording the ground truth, (batch_size)
     sents is a padded LongTensor, (batch_size, max_batchseq_lens)
@@ -58,6 +59,6 @@ def _collate_fn(l):
     l_starts/l_ends/r_starts/r_ends is a LongTensor which record the index to select,
         (batch_size)
     '''
-    return (seq_lens, sample_ids, pairs, labels, sents, poss, fts, revs, l_starts,
+    return (seq_lens, sample_ids, (doc_ids, pairs), labels, sents, poss, fts, revs, l_starts,
             l_ends, r_starts, r_ends, pred_inds)
 

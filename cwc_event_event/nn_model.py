@@ -16,9 +16,9 @@ class BiLSTM(nn.Module):
         super(BiLSTM, self).__init__()
         self.num_words = emb.shape[0]
         self.embed_size = emb.shape[1]
-        print('word embedding shape', emb.shape)
+        #print('word embedding shape', emb.shape)
         self.num_pos_tags = len(args.pos2idx) + 2  # add one for <unk>, one for <pad>
-        print('pos embedding shape', emb_pos.shape)
+        #print('pos embedding shape', emb_pos.shape)
         self.hid_size = args.hid
         self.num_layers = args.num_layers
         self.num_classes = len(args.label_to_id)
@@ -121,16 +121,12 @@ class BiLSTM(nn.Module):
         
         ### obtain hidden vars based on start and end idx 
         batch_size = len(seq_lens)
-        #ltar_f = out[lidx_end, :, :self.hid_size].view(batch_size, -1)
         lidx_e_idx = lidx_end.unsqueeze(1).expand((out.size(0), out.size(2))).unsqueeze(1) # (batch, 1, 2*hid_size)
         ltar_f = torch.gather(out, dim=1, index=lidx_e_idx).squeeze(1)[:,self.hid_size:]
-        #ltar_b = out[lidx_start, :, self.hid_size:].view(batch_size, -1)
         lidx_s_idx = lidx_start.unsqueeze(1).expand((out.size(0), out.size(2))).unsqueeze(1)
         ltar_b = torch.gather(out, dim=1, index=lidx_s_idx).squeeze(1)[:,:self.hid_size]
-        #rtar_f = out[ridx_end, :, :self.hid_size].view(batch_size, -1)
         ridx_e_idx = ridx_end.unsqueeze(1).expand((out.size(0), out.size(2))).unsqueeze(1)
         rtar_f = torch.gather(out, dim=1, index=ridx_e_idx).squeeze(1)[:,self.hid_size:]
-        #rtar_b = out[ridx_start, :, self.hid_size:].view(batch_size, -1)
         ridx_s_idx = ridx_start.unsqueeze(1).expand((out.size(0), out.size(2))).unsqueeze(1)
         rtar_b = torch.gather(out, dim=1, index=ridx_s_idx).squeeze(1)[:,:self.hid_size]
         
@@ -156,6 +152,5 @@ class BiLSTM(nn.Module):
             out = self.linear_c(out)
         else:
             out = self.linear2(out)
-        # TODO: why not share the biLSTM for causal+temporal? 
         prob = self.softmax(out) # batch x num_labels
         return out, prob

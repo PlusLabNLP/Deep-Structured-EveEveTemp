@@ -128,13 +128,13 @@ class NNClassifier(REDEveEveRelModel):
         if args.cv == True:
             best_params, avg_epoch = self.cross_validation(emb, pos_emb, args)
             ### retrain on the best parameters
-            args.refit = True
+            args.refit_all = True
             for k,v in best_params.items():
                 exec("args.%s=%s" % (k, v))
             exec('args.epochs=%s'%int(avg_epoch+0.99))
-            print(args)
-            with open('best_param_uf'+str(args.usefeature)+'_spemb_'+str(args.sparse_emb)+
-                      '_trainposemb_'+str(args.train_pos_emb), 'w') as file:
+            with open('best_param/best_param_'+str(args.data_type)+'_uf'+str(args.usefeature)+
+                      '_back'+str(args.backward_sample)+'_trainpos'+str(args.train_pos_emb)
+                      +'_joint'+str(args.joint), 'w') as file:
                 for k,v in vars(args).items():
                     if (k!='emb_array') and (k!='glove2vocab'):
                       file.write(str(k)+'   '+str(v)+'\n')
@@ -151,10 +151,12 @@ class NNClassifier(REDEveEveRelModel):
             if args.backward_sample:
                 data_dir_back = args.data_dir + "all_backward/"
             t_data = EventDataset(args.data_dir+type_dir,"train",args.glove2vocab,data_dir_back)
-            d_data = EventDataset(args.data_dir+type_dir,"dev",args.glove2vocab,data_dir_back)
-            t_data = t_data.merge_dataset(dev_data)
             print('total train_data %s samples' %len(t_data))
-            train_data = get_data_loader(train_data, **params)
+            d_data = EventDataset(args.data_dir+type_dir,"dev",args.glove2vocab,data_dir_back)
+            print('total dev_data %s samples' %len(d_data))
+            t_data.merge_dataset(d_data)
+            print('total refit_data %s samples' %len(t_data))
+            train_data = get_data_loader(t_data, **params)
             dev_data = []
 
         best_f1, _ = self._train(train_data, dev_data, emb, pos_emb, args)
@@ -231,7 +233,7 @@ class NNClassifier(REDEveEveRelModel):
                 gt_labels_rev = torch.cat([gt_labels_rev, label.cpu()], dim=0)
                 loss = criterion(out, label)
                 losses_t = torch.cat([losses_t, loss.cpu()], dim=0)
-                probs_rev = torch.cat([probs, prob.cpu()], dim=0)
+                probs_rev = torch.cat([probs_rev, prob.cpu()], dim=0)
             if (len(idx_c) > 0) and args.joint:
                 seq_l = seq_lens[idx_c]
                 sent = sents[idx_c]
@@ -267,9 +269,10 @@ class NNClassifier(REDEveEveRelModel):
             
             step += 1
             if step % 20 == 0:
-                print("finished evaluating %s steps" % step)
+                #print("finished evaluating %s steps" % step)
+                pass
         
-        print('totally evaluating %s reverse instance' % rev_count)
+        #print('totally evaluating %s reverse instance' % rev_count)
         if args.backward_sample:
             assert len(gt_labels) == len(gt_labels_rev)
 
@@ -305,8 +308,9 @@ class NNClassifier(REDEveEveRelModel):
 
         else:
             print("Evaluation temporal loss: %.4f" % torch.mean(losses_t).item())
-            if args.joint:
+            if args.joint and (len(losses_c)>0):
                 print("Evaluation causal loss: %.4f; accuracy: %.4f" % (torch.mean(losses_c).item(), float(correct)/float(len(losses_c))))
+                pass
             pred_labels = probs.data.max(1)[1].cpu().long().view(-1)
             return pred_labels, torch.mean(losses_t).item(), gt_labels
 
@@ -330,7 +334,7 @@ class NNClassifier(REDEveEveRelModel):
         best_eval_f1 = 0.0 
         best_epoch = 0
         for epoch in range(args.epochs):
-            print("Training Epoch #%s..." % (epoch + 1))
+            #print("Training Epoch #%s..." % (epoch + 1))
             model.train()
             correct = 0.
             step = 1
@@ -341,7 +345,7 @@ class NNClassifier(REDEveEveRelModel):
             count_c = 0.
             count_u = 0.
             start_time = time.time()
-            print('total train_data steps', len(train_data))
+            #print('total train_data steps', len(train_data))
             for data in train_data:
                 seq_lens,data_id,_,labels,sents,poss,fts,revs,lidx_start,lidx_end,ridx_start,ridx_end,_ = togpu_data(data)
                 # categorize data into U / C / L
@@ -490,7 +494,7 @@ class NNClassifier(REDEveEveRelModel):
                 loss.backward()                                                           
                 optimizer.step()
                                                                             
-                if step % 100 == 0 and (not in_cv):                                    
+                if step % 200 == 0 and (not in_cv):                                    
                     print("trained %s steps" % step)
                     print("Temporal loss is %.4f" % (total_loss_s/count_s))
                     if count_u > 0:
@@ -501,8 +505,8 @@ class NNClassifier(REDEveEveRelModel):
                 step += 1
 
             # Evaluate at the end of each epoch                                 
-            print("*"*50)
-            print("%s steps to evaluate..." % len(eval_data))
+            #print("*"*50)
+            #print("%s steps to evaluate..." % len(eval_data))
             if len(eval_data) > 0:
                 pred_labels, eval_loss, gt_labels = self.predict(model, eval_data, args)
                 assert gt_labels.size() == pred_labels.size() 
@@ -527,10 +531,9 @@ class NNClassifier(REDEveEveRelModel):
                     # do not copy intermedite model in CV to save memory
                     if not in_cv:
                         self.model = copy.deepcopy(model)
-                    best_epoch = epoch
-
-                print("Evaluation loss: %.4f; Evaluation F1: %.4f" % (eval_loss, eval_f1))
-                print("*"*50)
+                    best_epoch = epoch+1
+                #print("Evaluation loss: %.4f; Evaluation F1: %.4f" % (eval_loss, eval_f1))
+                #print("*"*50)
 
         print("Final Evaluation F1: %.4f" % best_eval_f1)
         print("*"*50)
@@ -578,8 +581,8 @@ class NNClassifier(REDEveEveRelModel):
             for k,v in param.items():
                 param_str += "%s=%s" % (k, v)
                 param_str += " "
-            print("Train parameters: %s" % param_str)
             print("*" * 50)
+            print("Train parameters: %s" % param_str)
 
             for k,v in param.items():
                 exec("args.%s=%s" % (k, v))
@@ -595,7 +598,13 @@ class NNClassifier(REDEveEveRelModel):
                     res.append(self.parallel_cv(split, emb=emb, pos_emb=pos_emb, args=args))
             f1s = list(zip(*res))[0]
             best_epoch = list(zip(*res))[1]
+            print('avg f1 score:', np.mean(f1s))
+            print('avg epoch:', np.mean(best_epoch))
             param_perf.append((param, np.mean(f1s), np.mean(best_epoch)))
+        with open('best_param/cv_devResult_'+str(args.data_type)+'_uf'+str(args.usefeature)+
+                  '_back'+str(args.backward_sample)+'_trainpos'+str(args.train_pos_emb)+
+                  '_joint'+str(args.joint)+'.pickle', 'wb') as f:
+            pickle.dump(sorted(param_perf, key=lambda x: x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
         params, f1, epoch = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
         print(sorted(param_perf, key=lambda x: x[1], reverse=True))
         print("Best Average F1: %s" % f1)
@@ -613,7 +622,7 @@ class NNClassifier(REDEveEveRelModel):
 
         backward_dir = ""
         if args.backward_sample:
-            backward_dir = "%s/cv_backward/fold%s/" % (args.data_dir, split)
+            backward_dir = "%scv_backward/fold%s/" % (args.data_dir, split)
             print(backward_dir)
 
         train_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split),"train", args.glove2vocab, backward_dir)
@@ -664,7 +673,7 @@ class NNClassifier(REDEveEveRelModel):
         else:
             num_tests = len([x for x in true_labels])
 
-        print("Total samples to eval: %s" % num_tests)
+        #print("Total samples to eval: %s" % num_tests)
         total_true = Counter(true_labels)
         total_pred = Counter(pred_labels)
         labels = list(self._id_to_label.keys())
@@ -795,36 +804,36 @@ if __name__ == '__main__':
     p.add_argument('-emb', type=int, default=300)
     p.add_argument('-hid', type=int, default=50)
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-dropout', type=float, default=0.5)
+    p.add_argument('-dropout', type=float, default=0.4)
     p.add_argument('-joint', type=str2bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
-    p.add_argument('-batch', type=int, default=64)
-    p.add_argument('-epochs', type=int, default=25)
+    p.add_argument('-batch', type=int, default=1)
+    p.add_argument('-epochs', type=int, default=9)
     p.add_argument('-seed', type=int, default=123)
     p.add_argument('-lr', type=float, default=0.0005)
     p.add_argument('-attention', type=str2bool, default=False)
     p.add_argument('-usefeature', type=str2bool, default=True)
-    p.add_argument('-sparse_emb', type=str2bool, default=False)
-    p.add_argument('-train_pos_emb', type=str2bool, default=True)
+    p.add_argument('-sparse_emb', type=str2bool, default=True)
+    p.add_argument('-train_pos_emb', type=str2bool, default=False)
     
     p.add_argument('-bert_fts', type=str2bool, default=False)
     p.add_argument('-n_fts', type=int, default=15)
-    p.add_argument('-backward_sample', type=str2bool, default=False) # previously True
+    p.add_argument('-backward_sample', type=str2bool, default=True) # previously True
     p.add_argument('-bootstrap', type=str2bool, default=False)
     p.add_argument('-loss_u', type=str, default='')
     p.add_argument('-unlabeled_weight', type=float, default=0.0)
     p.add_argument('-skip_u', type=str2bool, default=True)
     p.add_argument('-n_splits', type=int, default=5)
     p.add_argument('-cuda', type=str2bool, default=True)
-    p.add_argument('-cv', type=str2bool, default=True)
+    p.add_argument('-cv', type=str2bool, default=False)
     p.add_argument('-cv_shuffle', type=str2bool, default=False)
-    p.add_argument('-refit_all', type=str2bool, default=False)
+    p.add_argument('-refit_all', type=str2bool, default=True)
     
     p.add_argument('-save_model', type=str2bool, default=True)
-    p.add_argument('--save_stamp', type=str, default="tbd_local_300_50")
+    p.add_argument('--save_stamp', type=str, default="tbd_local_test")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=False)
-    p.add_argument('--load_model_file', type=str, default= '')
+    p.add_argument('--load_model_file', type=str, default= 'matres_0729_local_UFFalse_spembFalse_trainposFalse_jointTrue_backwardFalse.pt')
     args = p.parse_args()
     print(args)
     """
@@ -890,7 +899,8 @@ if __name__ == '__main__':
     args.nr = 0.0
     args.tempo_filter = True
     args.skip_other = True
-    args.params = {'hid': [20,30,40,50,60,70], 'dropout': [0.2,0.3,0.4,0.5,0.6], 
-                   'seed': [0, 123, 10], 'lr': [0.0005,0.001,0.002],
-                   'num_layers': [1, 2]}
+    args.params = {'hid':[50]} # for testing code
+    #args.params = {'hid': [20,30,40,50], 'dropout': [0.4,0.5,0.6], 
+    #               'seed': [0, 123], 'lr': [0.0005,0.001,0.002],
+    #               'num_layers': [1, 2], 'batch':[64,32]}
     main(args)

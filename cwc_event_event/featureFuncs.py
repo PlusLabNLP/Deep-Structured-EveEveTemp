@@ -246,6 +246,6 @@ def togpu(net):
     return net.to(device)
 
 def togpu_data(data):
-    seq_lens, data_id, pairs, labels, sents, poss, fts, revs, l_starts, l_ends, r_starts, r_ends, pred_inds = data
-    return(togpu(seq_lens), data_id, pairs, togpu(labels), togpu(sents), togpu(poss),
+    seq_lens, data_id, (doc_ids, pairs), labels, sents, poss, fts, revs, l_starts, l_ends, r_starts, r_ends, pred_inds = data
+    return(togpu(seq_lens), data_id, (doc_ids, pairs), togpu(labels), togpu(sents), togpu(poss),
            togpu(fts), revs, togpu(l_starts), togpu(l_ends), togpu(r_starts), togpu(r_ends), pred_inds)
