@@ -510,9 +510,9 @@ class NNClassifier(REDEveEveRelModel):
         if evaluate:
             assert len(true_labels) == N + Nc
             if self.args.data_type == 'tbd': 
-                predicts, gt_labels = global_model.evaluate(true_labels, exclude_vague=False, backward=flip)
+                gt_labels, predicts = global_model.evaluate(true_labels, exclude_vague=False, backward=flip)
             else:
-                predicts, gt_labels = global_model.evaluate(true_labels, exclude_vague=True, backward=flip)
+                gt_labels, predicts = global_model.evaluate(true_labels, exclude_vague=True, backward=flip)
             return best_pred_idx, best_pred_idx_c, predicts, gt_labels
         else:
             return best_pred_idx, best_pred_idx_c
@@ -585,7 +585,7 @@ class NNClassifier(REDEveEveRelModel):
         params = {'batch_size': args.batch,
                   'shuffle': False}
         if args.bert_fts:
-            type_dir = "all_bert_%sfts" % args.n_fts
+            type_dir = "all_bert_%sfts/" % args.n_fts
         else:
             type_dir = "all/"
         backward_dir = ""
@@ -594,7 +594,7 @@ class NNClassifier(REDEveEveRelModel):
         train_data = EventDataset(args.data_dir+type_dir,"train",args.glove2vocab,backward_dir)
         train_generator = get_data_loader(train_data, **params)
 
-        dev_data = EventDataset(args.data_dir+type_dir,"dev",args.glove2vocab,backward_dir)
+        dev_data = EventDataset(args.data_dir+type_dir,"test",args.glove2vocab,backward_dir)
         dev_generator = get_data_loader(dev_data, **params)
         return self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)
 
@@ -678,7 +678,7 @@ class NNClassifier(REDEveEveRelModel):
             if args.backward_sample:
                 data_dir_back = args.data_dir + 'all_backward/'
             t_data = EventDataset(args.data_dir+type_dir,'train',args.glove2vocab,data_dir_back)
-            d_data = EventDataset(args.data_dir+type_dir,'dev',args.glove2vocab,data_dir_back)
+            d_data = EventDataset(args.data_dir+type_dir,'test',args.glove2vocab,data_dir_back)
             t_data.merge_dataset(d_data)
             train_data = get_data_loader(t_data, **params)
             dev_data = []
@@ -792,10 +792,10 @@ def main(args):
     train_data = EventDataset(args.data_dir + type_dir, "train", args.glove2vocab, data_dir_back)
     train_generator = get_data_loader(train_data, **params)
 
-    dev_data = EventDataset(args.data_dir + type_dir, "dev", args.glove2vocab, data_dir_back)
+    dev_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, data_dir_back)
     dev_generator = get_data_loader(dev_data, **params)
     
-    test_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, data_dir_back)
+    test_data = EventDataset(args.data_dir + type_dir, "dev", args.glove2vocab, data_dir_back)
     test_generator = get_data_loader(test_data, **params)
     s_time = time.time() 
     models = [NNClassifier()]

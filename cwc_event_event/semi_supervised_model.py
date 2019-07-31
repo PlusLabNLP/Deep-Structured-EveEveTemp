@@ -125,21 +125,33 @@ class NNClassifier(REDEveEveRelModel):
             self.bootstrap(emb, pos_emb, args, test_data)
             return
 
+        selected_epoch = 25
         if args.cv == True:
             best_params, avg_epoch = self.cross_validation(emb, pos_emb, args)
-            ### retrain on the best parameters
-            args.refit_all = True
+            #args.refit_all = True
             for k,v in best_params.items():
                 exec("args.%s=%s" % (k, v))
-            exec('args.epochs=%s'%int(avg_epoch+0.99))
-            with open('best_param/best_param_'+str(args.data_type)+'_uf'+str(args.usefeature)+
+            with open('best_param/cv_bestparam_'+str(args.data_type)+'_uf'+str(args.usefeature)+
                       '_back'+str(args.backward_sample)+'_trainpos'+str(args.train_pos_emb)
-                      +'_joint'+str(args.joint), 'w') as file:
+                      +'_joint'+str(args.joint)+'_cv'+str(args.cv), 'w') as file:
                 for k,v in vars(args).items():
                     if (k!='emb_array') and (k!='glove2vocab'):
                       file.write(str(k)+'   '+str(v)+'\n')
+            selected_epoch = avg_epoch
+        else:
+            best_params, best_epoch = self.selectparam(emb, pos_emb, args)
+            for k,v in best_params.items():
+                exec("args.%s=%s" % (k,v))
+            with open('best_param/selectDev_bestparam_'+str(args.data_type)+'_uf'+str(args.usefeature)+
+                      '_back'+str(args.backward_sample)+'_trainpos'+str(args.train_pos_emb)
+                      +'_joint'+str(args.joint)+'_cv'+str(args.cv), 'w') as file:
+                for k,v in vars(args).items():
+                    if (k!='emb_array') and (k!='glove2vocab'):
+                      file.write(str(k)+'   '+str(v)+'\n')
+            selected_epoch = best_epoch
 
         if args.refit_all:
+            exec('args.epochs=%s'%int(selected_epoch+0.99))
             print('refit all....')
             params = {'batch_size': args.batch,
                       'shuffle': False}
@@ -158,7 +170,7 @@ class NNClassifier(REDEveEveRelModel):
             print('total refit_data %s samples' %len(t_data))
             train_data = get_data_loader(t_data, **params)
             dev_data = []
-
+        
         best_f1, _ = self._train(train_data, dev_data, emb, pos_emb, args)
         print("Final Dev F1: %.4f" % best_f1)
         return
@@ -187,7 +199,7 @@ class NNClassifier(REDEveEveRelModel):
         for d in data:
             seq_lens,data_id,_,labels,sents,poss,fts,revs,lidx_start,lidx_end,ridx_start,ridx_end,_ = togpu_data(d)
             idx_c = []
-            idx_c_r = [] # In RJ's setting, this seem to be empty forever.
+            idx_c_r = []
             idx_t = []
             idx_t_r = []
             for i, ids in enumerate(data_id):
@@ -269,10 +281,10 @@ class NNClassifier(REDEveEveRelModel):
             
             step += 1
             if step % 20 == 0:
-                #print("finished evaluating %s steps" % step)
+                print("finished evaluating %s steps" % step)
                 pass
         
-        #print('totally evaluating %s reverse instance' % rev_count)
+        print('totally evaluating %s reverse instance' % rev_count)
         if args.backward_sample:
             assert len(gt_labels) == len(gt_labels_rev)
 
@@ -296,15 +308,16 @@ class NNClassifier(REDEveEveRelModel):
                                             for i,j in enumerate(mask)])
             
             # choose forward or backward labels
+            '''
             labels_f = gt_labels.reshape(-1, 1)
             labels_b = gt_labels_rev.reshape(-1, 1)
-            max_label = torch.cat((labels_f, labels_b), 1)
-            labels = torch.LongTensor([max_label[i, j] if j == 0
-                                       else get_forward_label(max_label.data.numpy()[i, j]) 
+            labels = torch.cat((labels_f, labels_b), 1)
+            labels = torch.LongTensor([label[i, j] if j == 0
+                                       else get_forward_label(label.data.numpy()[i, j]) 
                                        for i,j in enumerate(mask)])
-            
+            '''
             print("Evaluation temporal loss: %.4f" % torch.mean(losses_t).item())
-            return pred_labels, torch.mean(losses_t).item(), labels
+            return pred_labels, torch.mean(losses_t).item(), gt_labels
 
         else:
             print("Evaluation temporal loss: %.4f" % torch.mean(losses_t).item())
@@ -323,18 +336,17 @@ class NNClassifier(REDEveEveRelModel):
         else:
             optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr, weight_decay=1e-7)
         criterion = nn.CrossEntropyLoss(reduction='sum')
-        losses = [] 
+        best_eval_f1 = 0.0 
+        best_epoch = 0
         if args.load_model == True:
             checkpoint = torch.load(args.ilp_dir + args.load_model_file)
             model.load_state_dict(checkpoint['state_dict'])
-            epoch = checkpoint['epoch']
+            #epoch = checkpoint['epoch']
             best_eval_f1 = checkpoint['f1']
             print("Local best eval f1 is: %s" % best_eval_f1)
 
-        best_eval_f1 = 0.0 
-        best_epoch = 0
+        print('total train_data steps', len(train_data))
         for epoch in range(args.epochs):
-            #print("Training Epoch #%s..." % (epoch + 1))
             model.train()
             correct = 0.
             step = 1
@@ -345,7 +357,6 @@ class NNClassifier(REDEveEveRelModel):
             count_c = 0.
             count_u = 0.
             start_time = time.time()
-            #print('total train_data steps', len(train_data))
             for data in train_data:
                 seq_lens,data_id,_,labels,sents,poss,fts,revs,lidx_start,lidx_end,ridx_start,ridx_end,_ = togpu_data(data)
                 # categorize data into U / C / L
@@ -505,14 +516,9 @@ class NNClassifier(REDEveEveRelModel):
                 step += 1
 
             # Evaluate at the end of each epoch                                 
-            #print("*"*50)
-            #print("%s steps to evaluate..." % len(eval_data))
             if len(eval_data) > 0:
                 pred_labels, eval_loss, gt_labels = self.predict(model, eval_data, args)
                 assert gt_labels.size() == pred_labels.size() 
-                
-                eval_correct = (pred_labels == gt_labels).sum()
-                eval_acc =  float(eval_correct) / float(len(pred_labels))
                 pred_labels = list(pred_labels.numpy())
                 gt_labels = list(gt_labels.numpy())
 
@@ -532,15 +538,15 @@ class NNClassifier(REDEveEveRelModel):
                     if not in_cv:
                         self.model = copy.deepcopy(model)
                     best_epoch = epoch+1
-                #print("Evaluation loss: %.4f; Evaluation F1: %.4f" % (eval_loss, eval_f1))
-                #print("*"*50)
+                print("Evaluation loss: %.4f; Evaluation F1: %.4f" % (eval_loss, eval_f1))
+                print("*"*50)
 
         print("Final Evaluation F1: %.4f" % best_eval_f1)
         print("*"*50)
 
         if len(eval_data) == 0:
             self.model = copy.deepcopy(model)
-            best_epoch = epoch
+            best_epoch = epoch + 1 
 
         if args.save_model == True and (not in_cv):
             torch.save({
@@ -569,10 +575,37 @@ class NNClassifier(REDEveEveRelModel):
                                               for x in test_data], pred_labels, args.data_type, dev=True)
             else:
                 test_f1 = self.weighted_f1(pred_labels, test_labels)
-        
             return test_f1
-
         return best_eval_f1, best_epoch
+    
+    def selectparam(self, emb, pos_emb, args):
+        param_perf = []
+        for param in ParameterGrid(args.params):
+            param_str = ""
+            for k,v in param.items():
+                param_str += "%s=%s" % (k, v)
+                param_str += " "
+            print("*" * 50)
+            print("Train parameters: %s" % param_str)
+            for k,v in param.items():
+                exec("args.%s=%s" % (k, v))
+            if (not args.cuda) or (not torch.cuda.is_available()):
+                pass #TODO
+            else:
+                f1, best_epoch = self.parallel_selectparam(emb=emb, pos_emb=pos_emb, args=args)
+            print('f1 score:', f1)
+            print('epoch:', best_epoch)
+            param_perf.append((param, f1, best_epoch))
+            with open('best_param/selectDev_devResult_'+str(args.data_type)+'_uf'+str(args.usefeature)+
+                      '_back'+str(args.backward_sample)+'_trainpos'+str(args.train_pos_emb)+
+                      '_joint'+str(args.joint)+'_cv'+str(args.cv)+'.pickle', 'wb') as f:
+                pickle.dump(sorted(param_perf, key=lambda x: x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
+        params, f1, epoch = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
+        print(sorted(param_perf, key=lambda x: x[1], reverse=True))
+        print("Best Average F1: %s" % f1)
+        print("Best Parameters Are: %s " % params)
+        print("Best Epoch is: %s" % epoch)
+        return params, epoch
 
     def cross_validation(self, emb, pos_emb, args):
         param_perf = []
@@ -601,10 +634,10 @@ class NNClassifier(REDEveEveRelModel):
             print('avg f1 score:', np.mean(f1s))
             print('avg epoch:', np.mean(best_epoch))
             param_perf.append((param, np.mean(f1s), np.mean(best_epoch)))
-        with open('best_param/cv_devResult_'+str(args.data_type)+'_uf'+str(args.usefeature)+
-                  '_back'+str(args.backward_sample)+'_trainpos'+str(args.train_pos_emb)+
-                  '_joint'+str(args.joint)+'.pickle', 'wb') as f:
-            pickle.dump(sorted(param_perf, key=lambda x: x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
+            with open('best_param/cv_devResult_'+str(args.data_type)+'_uf'+str(args.usefeature)+
+                      '_back'+str(args.backward_sample)+'_trainpos'+str(args.train_pos_emb)+
+                      '_joint'+str(args.joint)+'_cv'+str(args.cv)+'.pickle', 'wb') as f:
+                pickle.dump(sorted(param_perf, key=lambda x: x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
         params, f1, epoch = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
         print(sorted(param_perf, key=lambda x: x[1], reverse=True))
         print("Best Average F1: %s" % f1)
@@ -623,16 +656,39 @@ class NNClassifier(REDEveEveRelModel):
         backward_dir = ""
         if args.backward_sample:
             backward_dir = "%scv_backward/fold%s/" % (args.data_dir, split)
-            print(backward_dir)
 
-        train_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split),"train", args.glove2vocab, backward_dir)
+        train_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split),
+                                  "train", args.glove2vocab, backward_dir)
         train_generator = get_data_loader(train_data, **params)
         
-        dev_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split), "dev", args.glove2vocab, backward_dir)
+        dev_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split), 
+                                "dev", args.glove2vocab, backward_dir)
         dev_generator = get_data_loader(dev_data, **params)
 
         return self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)
  
+    def parallel_selectparam(self, emb = np.array([]), pos_emb = [], args=None):
+        params = {'batch_size': args.batch,
+                  'shuffle': False}
+        if args.bert_fts:
+            type_dir = "all_bert_%sfts/" % args.n_fts
+        else:
+            type_dir = "all/"
+
+        backward_dir = ""
+        if args.backward_sample:
+            backward_dir = args.data_dir + "all_backward/"
+
+        train_data = EventDataset(args.data_dir+type_dir,
+                                  "train", args.glove2vocab, backward_dir)
+        train_generator = get_data_loader(train_data, **params)
+        
+        dev_data = EventDataset(args.data_dir+type_dir, 
+                                "dev", args.glove2vocab, backward_dir)
+        dev_generator = get_data_loader(dev_data, **params)
+
+        return self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)  
+
     def parallel_bootstrap(self, bs_n, emb = np.array([]), pos_emb = [], args=None, test_data=None):
 
         params = {'batch_size': args.batch,
@@ -784,7 +840,6 @@ def main(args):
             model.train_epoch(train_generator, dev_generator, args)
             print('total time escape', time.time()-s_time)
             evaluator = REDEvaluator(model)
-            print("test...")
             print(evaluator.evaluate(test_generator, args))
 
 def str2bool(v):
@@ -800,25 +855,25 @@ def str2bool(v):
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
     # arguments
-    p.add_argument('-data_type', type=str, default="tbd")
+    p.add_argument('-data_type', type=str, default="matres")
     p.add_argument('-emb', type=int, default=300)
-    p.add_argument('-hid', type=int, default=50)
+    p.add_argument('-hid', type=int, default=30)
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-dropout', type=float, default=0.4)
+    p.add_argument('-dropout', type=float, default=0.6)
     p.add_argument('-joint', type=str2bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
-    p.add_argument('-batch', type=int, default=1)
-    p.add_argument('-epochs', type=int, default=9)
-    p.add_argument('-seed', type=int, default=123)
-    p.add_argument('-lr', type=float, default=0.0005)
+    p.add_argument('-batch', type=int, default=32)
+    p.add_argument('-epochs', type=int, default=15)
+    p.add_argument('-seed', type=int, default=0)
+    p.add_argument('-lr', type=float, default=0.002)
     p.add_argument('-attention', type=str2bool, default=False)
-    p.add_argument('-usefeature', type=str2bool, default=True)
-    p.add_argument('-sparse_emb', type=str2bool, default=True)
-    p.add_argument('-train_pos_emb', type=str2bool, default=False)
+    p.add_argument('-usefeature', type=str2bool, default=False)
+    p.add_argument('-sparse_emb', type=str2bool, default=False)
+    p.add_argument('-train_pos_emb', type=str2bool, default=True)
     
     p.add_argument('-bert_fts', type=str2bool, default=False)
     p.add_argument('-n_fts', type=int, default=15)
-    p.add_argument('-backward_sample', type=str2bool, default=True) # previously True
+    p.add_argument('-backward_sample', type=str2bool, default=True)
     p.add_argument('-bootstrap', type=str2bool, default=False)
     p.add_argument('-loss_u', type=str, default='')
     p.add_argument('-unlabeled_weight', type=float, default=0.0)
@@ -830,7 +885,7 @@ if __name__ == '__main__':
     p.add_argument('-refit_all', type=str2bool, default=True)
     
     p.add_argument('-save_model', type=str2bool, default=True)
-    p.add_argument('--save_stamp', type=str, default="tbd_local_test")
+    p.add_argument('--save_stamp', type=str, default="matres_local_test")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=False)
     p.add_argument('--load_model_file', type=str, default= 'matres_0729_local_UFFalse_spembFalse_trainposFalse_jointTrue_backwardFalse.pt')
@@ -899,8 +954,10 @@ if __name__ == '__main__':
     args.nr = 0.0
     args.tempo_filter = True
     args.skip_other = True
-    args.params = {'hid':[50]} # for testing code
-    #args.params = {'hid': [20,30,40,50], 'dropout': [0.4,0.5,0.6], 
-    #               'seed': [0, 123], 'lr': [0.0005,0.001,0.002],
-    #               'num_layers': [1, 2], 'batch':[64,32]}
+    #args.params = {'hid':[args.hid], 'dropout':[args.dropout],
+    #               'seed':[args.seed], 'lr':[args.lr],
+    #               'num_layers':[args.num_layers], 'batch':[args.batch]} # for testing code
+    args.params = {'hid': [30,40,50,60], 'dropout': [0.4,0.5,0.6], 
+                   'seed': [0], 'lr': [0.0005,0.001],
+                   'num_layers': [1, 2], 'batch':[64,32]}
     main(args)
