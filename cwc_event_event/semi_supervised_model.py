@@ -665,7 +665,7 @@ class NNClassifier(REDEveEveRelModel):
                     res.append(self.parallel_cv(split, emb=emb, pos_emb=pos_emb, args=args))
             f1s = list(zip(*res))[0]
             best_epoch = list(zip(*res))[1]
-            print('avg f1 score: %s, avg epoch %s'%(np.mean(f1), np.mean(best_epoch)))
+            print('avg f1 score: %s, avg epoch %s'%(np.mean(f1s), np.mean(best_epoch)))
             param_perf.append((param, np.mean(f1s), np.mean(best_epoch)))
             if args.write:
                 with open('best_param/cv_devResult_'+str(args.data_type)+
