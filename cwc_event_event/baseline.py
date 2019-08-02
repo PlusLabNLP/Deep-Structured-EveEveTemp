@@ -631,8 +631,6 @@ class ClassificationReport:
                           num_to_str(sum(r for _, r, _ in weighted_scores)).ljust(head_width[4]),
                           num_to_str(sum(f for _, _, f in weighted_scores)).ljust(head_width[5])])
 
-        print(n_correct, n_pred, n_true)
-
         precision = safe_division(n_correct, n_pred)
         recall = safe_division(n_correct, n_true)
         f1_score = safe_division(2 * precision * recall, precision + recall)

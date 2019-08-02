@@ -5,6 +5,7 @@ from typing import Iterator, List, Mapping, Union, Optional, Set
 import numpy as np
 import pickle
 from baseline import rev_map, rev_causal_map, ClassificationReport
+import copy
 
 class Gurobi_Inference():
     
@@ -182,8 +183,8 @@ class Gurobi_Inference():
             for ci in self.transitivity_criteria(var_table, triple):
                 self.model.addConstr(ci <= 1, "c2_%s" % t)
                 t += 1
-        
         # Constraint 3: Symmetry
+        '''
         offset = int(len(self.pairs) / 2)
         for n in range(offset):
             for si in self.symmetry_constraints(var_table, n):
@@ -192,7 +193,7 @@ class Gurobi_Inference():
         for n in range(offset):
             for si in self.symmetry_constraints(var_table, n+self.N, causal=True):
                 self.model.addConstr(si,  "c3_1_%s" % n)
-        
+        '''
         # Constraint 3: grammar rules
         #for n in range(self.N):
         #    label = self.tense_relation(n)
@@ -256,9 +257,8 @@ class Gurobi_Inference():
         else:
             labels_t =  [self.idx2label[x.item()] for x in true_labels[:self.N]]
             pred_labels =  [self.idx2label[x] for x in self.pred_labels]
-                                                                    
+        
         print(ClassificationReport("Event-Event-Rel-Global", labels_t, pred_labels, exclude_vague))
-
         if self.Nc > 0:
             labels_c = [self.idx2label_c[x.item()] for x in true_labels[self.N:]]
             pred_labels_c = [self.idx2label_c[x] for x in self.pred_labels_c]
@@ -269,4 +269,4 @@ class Gurobi_Inference():
                 pred_labels_c = pred_labels_c[:int(self.Nc/2)]
             correct = [x for x in range(len(labels_c)) if pred_labels_c[x] == labels_c[x]]
             print("Causal Accurracy is: %.4f" % (float(len(correct)) / float(len(labels_c))))
-        return true_labels[:int(self.N/2)].cpu().tolist(), self.pred_labels[:int(self.N/2)]
+        return copy.deepcopy(self.pred_labels)

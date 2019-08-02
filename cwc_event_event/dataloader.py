@@ -4,7 +4,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 
 def get_data_loader(dataset, batch_size, shuffle=False):
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=_collate_fn, num_workers=0)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=_collate_fn, num_workers=0, worker_init_fn=0)
 
 def _collate_fn(l):
     # pad data

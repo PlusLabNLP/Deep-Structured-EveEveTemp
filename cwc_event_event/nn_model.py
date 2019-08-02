@@ -10,6 +10,7 @@ from torch.nn import Parameter
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
 torch.manual_seed(123)
+torch.cuda.manual_seed(0)
 
 class BiLSTM(nn.Module):
     def __init__(self, emb, emb_pos, args):

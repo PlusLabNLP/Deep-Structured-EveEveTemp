@@ -213,7 +213,7 @@ class NNClassifier(REDEveEveRelModel):
         eval_pairs_c = eval_pairs_c+eval_pairs_c_r
         probs = torch.cat((probs+probs_r), dim=0)
         prob_table = probs.cpu().data.numpy()
-        gt_labels_ori = torch.cat(gt_labels+gt_labels_r, dim=0)
+        gt_labels = torch.cat(gt_labels+gt_labels_r, dim=0)
         prob_table_c = np.zeros((0, 0))
         if len(probs_c) > 0:
             probs_c = torch.cat((probs_c+probs_c_r), dim=0)
@@ -221,32 +221,39 @@ class NNClassifier(REDEveEveRelModel):
             gt_labels_c = torch.cat(gt_labels_c+gt_labels_c_r, dim=0)
         
         # find max prediction based on global prediction 
-        best_pred_idx, _, predictions, gt_labels =\
+        best_pred_idx, _, predictions=\
             self.global_prediction(eval_pairs, prob_table, eval_pairs_c,
                                    prob_table_c, evaluate=True,
-                                   true_labels=gt_labels_ori, flip=args.backward_sample)
-        loss = self.loss_func(best_pred_idx, gt_labels_ori, probs, args.margin)
+                                   true_labels=gt_labels, flip=args.backward_sample)
+        loss = self.loss_func(best_pred_idx, gt_labels, probs, args.margin)
         print("Evaluation loss: %.4f" % loss.cpu().data.numpy())
-        return gt_labels, predictions
+        return gt_labels.cpu().tolist(), predictions.cpu().tolist()
 
     def _train(self, train_data, eval_data, emb, pos_emb, args, 
                in_cv=False, test_data=None):
         model = BiLSTM(emb, pos_emb, args)
         if args.cuda and torch.cuda.is_available():
             model = togpu(model)
-        best_eval_f1 = 0.0
+        
         if args.load_model == True:
             checkpoint = torch.load(args.ilp_dir + args.load_model_file)
             model.load_state_dict(checkpoint['state_dict'])
             best_eval_f1 = checkpoint['f1']
             print("Local best eval f1 is: %s" % best_eval_f1)
-
-        optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 
-                              lr=args.lr, momentum=args.momentum, weight_decay=args.decay) 
-        best_model = copy.deepcopy(model)
         best_epoch = 0
+        best_eval_f1 = 0.0
+        
+        if args.optimizer == 'SGD':
+            optimizer = optim.SGD(filter(lambda p: p.requires_grad, model.parameters()), 
+                                  lr=args.lr, momentum=args.momentum, weight_decay=args.decay)
+        elif args.optimizer == 'Adam':
+            optimizer = optim.Adam(filter(lambda p: p.requires_grad, model.parameters()),
+                                   lr=args.lr, weight_decay=args.decay)
+        else:
+            raise ValueError('the choice of optimizer did not exist')
+        
         for epoch in range(args.epochs):
-            print("Training Epoch #%s..." % (epoch + 1))
+            print('Training... %s-th epoch'%(epoch+1)) 
             model.train()
             correct = 0.
             step = 1    
@@ -420,7 +427,7 @@ class NNClassifier(REDEveEveRelModel):
                 loss_c = self.loss_func(best_pred_idx_c, gt_labels_c, probs_c, args.margin)
                 loss = loss + loss_c
             loss.backward()
-            #torch.nn.utils.clip_grad_norm(model.parameters(), args.clipper)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()                               
 
             print("Train loss: %.4f" % loss.cpu().item())
@@ -433,23 +440,22 @@ class NNClassifier(REDEveEveRelModel):
                 #ta_f1 = temporal_awareness(eval_data, [self._id_to_label[x] for x in eval_preds])
                 if eval_f1 > best_eval_f1:
                     best_eval_f1 = eval_f1
-                    best_model = copy.deepcopy(model)
+                    if not in_cv:
+                        self.model = copy.deepcopy(model)
                     best_epoch = epoch + 1
-
                 print("Evaluation F1: %.4f" % eval_f1)
                 print("*"*50)
 
         print("Final Evaluation F1: %.4f" % best_eval_f1)
         print("*"*50)
 
-        if len(eval_data) > 0 :
-            self.model = best_model
-        else:
+        if len(eval_data) == 0 :
             self.model = copy.deepcopy(model)
+            best_epoch = args.epochs
         
         if args.save_model and (not in_cv):
             torch.save({'args': args,
-                        'state_dict': best_model.state_dict(),
+                        'state_dict': self.model.state_dict(),
                         'f1': best_eval_f1,
                         'optimizer' : optimizer.state_dict(),
                         'epoch': best_epoch
@@ -458,28 +464,28 @@ class NNClassifier(REDEveEveRelModel):
         return best_eval_f1, best_epoch
     
     def loss_func(self, best_pred_idx, gt_labels, probs, margin):
-        # max global prediction scores
         mask_pred = togpu(torch.ByteTensor(best_pred_idx))
         assert mask_pred.size() == probs.size()
         max_scores = torch.masked_select(probs, mask_pred) # S(y^;x) ; 1D array
         # true label scores
         N = probs.size()[0]
         C = probs.size()[1]
+        assert max_scores.size(0) == N
         idx_mat = np.zeros((N, C), dtype=int)
         for n in range(N):
             idx_mat[n][gt_labels[n]] = 1
         mask = togpu(torch.ByteTensor(idx_mat))
         assert mask.size() == probs.size()
         label_scores = torch.masked_select(probs, mask) # S(y;x) ; 1D array
-        ### Implement SSVM Loss here
         # distance measure
         # TODO: I-Hung, why not hamming distance here?
-        #delta = togpu(torch.FloatTensor([margin for n in range(N)]))
         # Hammming distance
-        delta = torch.sum((mask_pred!=mask), dim=1, dtype=torch.float)
+        #delta = torch.sum((mask_pred!=mask), dim=1, dtype=torch.float)
+        delta = togpu(torch.FloatTensor([margin for n in range(N)]))
         diff = delta + max_scores - label_scores # size N
-        mask = (diff<0.0)
-        losses = diff.masked_fill_(mask, 0.0)
+        #mask = (diff<0.0)
+        #losses = diff.masked_fill_(mask, 0.0)
+        losses = diff
         return torch.mean(losses) 
     
     def global_prediction(self, pairs, prob_table, pairs_c, prob_table_c, 
@@ -506,14 +512,15 @@ class NNClassifier(REDEveEveRelModel):
         # causal
         for n in range(Nc):
             best_pred_idx_c[n, global_model.pred_labels_c[n]] = 1
-
+        
         if evaluate:
             assert len(true_labels) == N + Nc
             if self.args.data_type == 'tbd': 
-                gt_labels, predicts = global_model.evaluate(true_labels, exclude_vague=False, backward=flip)
+                prediction = global_model.evaluate(true_labels, exclude_vague=False, backward=flip)
             else:
-                gt_labels, predicts = global_model.evaluate(true_labels, exclude_vague=True, backward=flip)
-            return best_pred_idx, best_pred_idx_c, predicts, gt_labels
+                prediction = global_model.evaluate(true_labels, exclude_vague=True, backward=flip)
+            prediction = togpu(torch.LongTensor(prediction))
+            return best_pred_idx, best_pred_idx_c, prediction
         else:
             return best_pred_idx, best_pred_idx_c
 
@@ -542,14 +549,15 @@ class NNClassifier(REDEveEveRelModel):
             print('avg f1 score:', np.mean(f1s))
             print('avg epoch:', np.mean(best_epoch))
             param_perf.append((param, np.mean(f1s), np.mean(best_epoch)))
-        with open('best_param/cv_global_devResult_'+str(args.data_type)+
-                  '.pickle', 'wb') as f:
-            pickle.dump(sorted(param_perf, key=lambda x:x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
+            with open('best_param/global_cv_devResult_'+str(args.data_type)+
+                      '.pickle', 'wb') as f:
+                pickle.dump(sorted(param_perf, key=lambda x:x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
         params, f1, epoch = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
-        print(sorted(param_perf, key=lambda x: x[1], reverse=True))
         print("Best Average F1: %s" % f1)
         print("Best Parameters Are: %s " % params)
         print("Best Epoch is: %s" % epoch)
+        print()
+        print()
         return params, epoch
 
     def selectparam(self, emb, pos_emb, args):
@@ -561,22 +569,20 @@ class NNClassifier(REDEveEveRelModel):
                 param_str += " "
             print("*" * 50)
             print("Train parameters: %s" % param_str)
-
             for k,v in param.items():
                 exec("args.%s=%s" % (k, v))
             if (not args.cuda) or (not torch.cuda.is_available()):            
                 pass #TODO
             else:
                 f1, best_epoch = self.parallel_selectparam(emb=emb, pos_emb=pos_emb, args=args)
-            print('avg f1 score:', f1)
-            print('avg epoch:', best_epoch)
+            print('f1 score:', f1)
+            print('epoch:', best_epoch)
             param_perf.append((param, f1, best_epoch))
-        with open('best_param/selectparam_global_devResult_'+str(args.data_type)+
-                  '.pickle', 'wb') as f:
-            pickle.dump(sorted(param_perf, key=lambda x:x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
+            with open('best_param/global_selectparam_devResult_'+
+                      str(args.data_type)+'.pickle', 'wb') as f:
+                pickle.dump(sorted(param_perf, key=lambda x:x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
         params, f1, epoch = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
-        print(sorted(param_perf, key=lambda x: x[1], reverse=True))
-        print("Best Average F1: %s" % f1)
+        print("Best Dev F1: %s" % f1)
         print("Best Parameters Are: %s " % params)
         print("Best Epoch is: %s" % epoch)
         return params, epoch
@@ -591,10 +597,12 @@ class NNClassifier(REDEveEveRelModel):
         backward_dir = ""
         if args.backward_sample:
             backward_dir = args.data_dir + "all_backward/"
-        train_data = EventDataset(args.data_dir+type_dir,"train",args.glove2vocab,backward_dir)
+        train_data = EventDataset(args.data_dir+type_dir,"train",
+                                  args.glove2vocab,backward_dir)
         train_generator = get_data_loader(train_data, **params)
 
-        dev_data = EventDataset(args.data_dir+type_dir,"test",args.glove2vocab,backward_dir)
+        dev_data = EventDataset(args.data_dir+type_dir,"dev",
+                                args.glove2vocab,backward_dir)
         dev_generator = get_data_loader(dev_data, **params)
         return self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)
 
@@ -610,10 +618,12 @@ class NNClassifier(REDEveEveRelModel):
         if args.backward_sample:
             backward_dir = "%s/cv_backward/fold%s/" % (args.data_dir, split)
 
-        train_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir,split),"train",args.glove2vocab,backward_dir)
+        train_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir,split),"train",
+                                  args.glove2vocab,backward_dir)
         train_generator = get_data_loader(train_data, **params)
 
-        dev_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split),"dev",args.glove2vocab,backward_dir)
+        dev_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split),"dev",
+                                args.glove2vocab,backward_dir)
         dev_generator = get_data_loader(dev_data, **params)
         return self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)
                   
@@ -643,30 +653,30 @@ class NNClassifier(REDEveEveRelModel):
         pos_emb= np.zeros((len(args.pos2idx) + 2, len(args.pos2idx) + 2))
         for i in range(pos_emb.shape[0]):
             pos_emb[i, i] = 1.0
+        
         self.args = args
+        selected_epoch = 20
         if args.cv == True:
             best_params, avg_epoch = self.cross_validation(emb, pos_emb, args)
-            ### retrain on the best parameters
-            args.refit_all = True
             for k,v in best_params.items():
                 exec("args.%s=%s" % (k, v))
-            exec('args.epochs=%s'%int(avg_epoch+0.99))
-            with open('best_param/best_param_global_'+str(args.data_type), 'w') as file:
+            with open('best_param/global_cv_bestparam_'+str(args.data_type), 'w') as file:
                 for k,v in vars(args).items():
                     if (k!='emb_array') and (k!='glove2vocab'):
                         file.write(str(k)+'    '+str(v)+'\n')
+            selected_epoch = avg_epoch
         else:
             best_params, best_epoch = self.selectparam(emb, pos_emb, args)
-            args.refit_all = True
             for k,v in best_params.items():
                 exec("args.%s=%s" % (k, v))
-            exec('args.epochs=%s'%int(best_epoch))
-            with open('best_param/best_param_selectbydev_global_'+str(args.data_type), 'w') as file:
+            with open('best_param/global_selectDev_bestparam_'+str(args.data_type), 'w') as file:
                 for k,v in vars(args).items():
                     if (k!='emb_array') and (k!='glove2vocab'):
                         file.write(str(k)+'    '+str(v)+'\n')
+            selected_epoch = best_epoch
 
         if args.refit_all:
+            exec('args.epochs=%s'%int(selected_epoch))
             print('refit all.....')
             params = {'batch_size': args.batch,
                       'shuffle': False}
@@ -678,26 +688,24 @@ class NNClassifier(REDEveEveRelModel):
             if args.backward_sample:
                 data_dir_back = args.data_dir + 'all_backward/'
             t_data = EventDataset(args.data_dir+type_dir,'train',args.glove2vocab,data_dir_back)
-            d_data = EventDataset(args.data_dir+type_dir,'test',args.glove2vocab,data_dir_back)
+            d_data = EventDataset(args.data_dir+type_dir,'dev',args.glove2vocab,data_dir_back)
             t_data.merge_dataset(d_data)
             train_data = get_data_loader(t_data, **params)
             dev_data = []
-
-        best_f1, _ = self._train(train_data, dev_data, emb, pos_emb, args)
+        best_f1, best_epoch = self._train(train_data, dev_data, emb, pos_emb, args)
+        print("Final Epoch Use: %s" % best_epoch)
         print("Final Dev F1: %.4f" % best_f1)
-        return -1.0
+        return
 
     def weighted_f1(self, pred_labels, true_labels):
         def safe_division(numr, denr, on_err=0.0):
-            return on_err if denr == 0.0 else numr / denr
+            return on_err if float(denr) == 0.0 else float(numr) / float(denr)
         assert len(pred_labels) == len(true_labels)
-        weighted_f1_scores = {}
         if 'NONE' in self._label_to_id.keys():
             num_tests = len([x for x in true_labels if x != self._label_to_id['NONE']])
         else:
             num_tests = len([x for x in true_labels])
 
-        #print("Total samples to eval: %s" % num_tests)
         total_true = Counter(true_labels)
         total_pred = Counter(pred_labels)
         labels = list(self._id_to_label.keys())
@@ -724,9 +732,7 @@ class NNClassifier(REDEveEveRelModel):
         return f1_score
 
 def temporal_awareness(data, pred_labels, data_type, with_timex=False):
-    
     gold_rels = {}
-    
     for i, ex in enumerate(data):
         # Do not evaluate on VAGUE class for MATRES dataset
         if data_type == 'matres' and ex.rel_type == 'VAGUE':
@@ -740,13 +746,6 @@ def temporal_awareness(data, pred_labels, data_type, with_timex=False):
     for k, vs in gold_rels.items():
         for v in vs:
             idx2docs[v[0]] = (k, v[1], v[2], v[3])
-    
-    # for debug
-    #for k,v in gold_rels.items():
-    #    print(k)
-    #     print(len(v))
-    ### append ET and TT pairs
-    
     if data_type == 'tbd' and with_timex:
         print("TBDense Gold")
         with open("/nas/home/rujunhan/data/TBDense/caevo_test_ettt.pkl", "rb") as fl:
@@ -790,12 +789,15 @@ def main(args):
     if args.backward_sample:
         data_dir_back = args.data_dir + "all_backward/"
     train_data = EventDataset(args.data_dir + type_dir, "train", args.glove2vocab, data_dir_back)
+    print('train_data: %s in total' % len(train_data))
     train_generator = get_data_loader(train_data, **params)
 
-    dev_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, data_dir_back)
+    dev_data = EventDataset(args.data_dir + type_dir, "dev", args.glove2vocab, data_dir_back)
+    print('dev_data: %s in total' % len(dev_data))
     dev_generator = get_data_loader(dev_data, **params)
     
-    test_data = EventDataset(args.data_dir + type_dir, "dev", args.glove2vocab, data_dir_back)
+    test_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, data_dir_back)
+    print('test_data: %s in total' % len(test_data))
     test_generator = get_data_loader(test_data, **params)
     s_time = time.time() 
     models = [NNClassifier()]
@@ -825,16 +827,18 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('-data_type', type=str, default="matres")
     p.add_argument('-emb', type=int, default=300)
-    p.add_argument('-hid', type=int, default=30)
+    p.add_argument('-hid', type=int, default=60)
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-dropout', type=float, default=0.6)
-    p.add_argument('-joint', type=str2bool, default=True)
+    p.add_argument('-dropout', type=float, default=0.4)
+    p.add_argument('-joint', type=str2bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
-    p.add_argument('-batch', type=int, default=32)
-    p.add_argument('-epochs', type=int, default=25)
+    p.add_argument('-batch', type=int, default=64)
+    p.add_argument('-epochs', type=int, default=20)
+    p.add_argument('-optimizer',  type=str, choices=['Adam', 'SGD'],
+                   default='SGD')
     p.add_argument('-seed', type=int, default=9)
-    p.add_argument('-lr', type=float, default=0.01)
-    p.add_argument('-decay', type=float, default=0.4)
+    p.add_argument('-lr', type=float, default=0.0005)
+    p.add_argument('-decay', type=float, default=1e-6)
     p.add_argument('-momentum', type=float, default=0.9)
     p.add_argument('-attention', type=str2bool, default=False)
     p.add_argument('-usefeature', type=str2bool, default=False)
@@ -855,16 +859,15 @@ if __name__ == '__main__':
     p.add_argument('-refit_all', type=str2bool, default=False)
     
     p.add_argument('-save_model', type=str2bool, default=True)
-    p.add_argument('--save_stamp', type=str, default="global_testing")
+    p.add_argument('--save_stamp', type=str, default="matres_global_testing")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=True)
     p.add_argument('--load_model_file', type=str, 
-                   default='matres_0729_local_UFFalse_spembFalse_trainposTrue_jointTrue_backwardTrue.pt')
-    p.add_argument('--margin', type=float, default=0.3) # TODO: check this
+                   default='matres_local_best_backTrue_trainposTrue_refitFalse.pt')
+    p.add_argument('--margin', type=float, default=0.05) 
     args = p.parse_args()
     print(args)
     '''
-    # bootstrap options                                                                                     
     p.add_argument('-bootstrap', type=bool, default=False)
     p.add_argument('-bs_list', type=list, default=list(range(0, 5)))
     p.add_argument('-seed', type=int, default=9) # 9, 1, 10, 100, 200, 1000
@@ -899,7 +902,7 @@ if __name__ == '__main__':
     args.nr = 0.0
     args.tempo_filter = True
     args.skip_other = True
-    #args.params = {'lr': [0.01, 0.02],  'momentum':[0.9, 0.8, 0.7], 
-    #               'decay':[0.1, 0.5, 0.9], 'margin':[0.1,0.2,0.3]}
-    args.params = {'lr': [args.lr],  'momentum':[args.momentum], 'decay':[args.decay]}
+    args.params = {'lr': [0.1,0.01,0.05,0.001,0.005,0.0001], 
+                   'momentum':[0.4, 0.7, 0.9], 
+                   'decay':[0.4, 0.7, 0.9, 0.1]}
     main(args)
