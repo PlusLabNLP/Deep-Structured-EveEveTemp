@@ -603,10 +603,11 @@ class NNClassifier(REDEveEveRelModel):
             for k,v in param.items():
                 exec("args.%s=%s" % (k, v))
             if (not args.cuda) or (not torch.cuda.is_available()):
+                raise ValueError('cuda not available')
                 pass #TODO
             else:
                 f1, best_epoch = self.parallel_selectparam(emb=emb, pos_emb=pos_emb, args=args)
-            print('param f1 score: %s, param epoch %s'%(f1, best_epoch))
+                print('param f1 score: %s, param epoch %s'%(f1, best_epoch))
             param_perf.append((param, f1, best_epoch))
             if args.write:
                 with open('best_param/selectDev_devResult_'+str(args.data_type)+
@@ -974,5 +975,5 @@ if __name__ == '__main__':
     # TBD
     if args.data_type == 'tbd':
         args.params = {'hid': [40,50,60], 'dropout': [0.3,0.4,0.5,0.6], 
-                       'lr': [0.0005, 0.002], 'num_layers': [1, 2]}
+                       'lr': [0.001, 0.002], 'num_layers': [1, 2]}
     main(args)
