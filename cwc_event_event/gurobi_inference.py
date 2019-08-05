@@ -61,7 +61,6 @@ class Gurobi_Inference():
     def objective(self, samples, p_table, p_table_c):
     
         obj = 0.0
-
         assert len(samples) == self.N + self.Nc
         assert len(samples[0]) == self.P
         
@@ -184,7 +183,6 @@ class Gurobi_Inference():
                 self.model.addConstr(ci <= 1, "c2_%s" % t)
                 t += 1
         # Constraint 3: Symmetry
-        '''
         offset = int(len(self.pairs) / 2)
         for n in range(offset):
             for si in self.symmetry_constraints(var_table, n):
@@ -193,7 +191,6 @@ class Gurobi_Inference():
         for n in range(offset):
             for si in self.symmetry_constraints(var_table, n+self.N, causal=True):
                 self.model.addConstr(si,  "c3_1_%s" % n)
-        '''
         # Constraint 3: grammar rules
         #for n in range(self.N):
         #    label = self.tense_relation(n)
@@ -251,12 +248,9 @@ class Gurobi_Inference():
     def evaluate(self, true_labels, exclude_vague=True, backward=True):
         assert len(true_labels) == len(self.pred_labels) + len(self.pred_labels_c)
         assert backward == True
-        if backward:
-            labels_t =  [self.idx2label[x.item()] for x in true_labels[:int(self.N/2)]]
-            pred_labels =  [self.idx2label[x] for x in self.pred_labels[:int(self.N/2)]]
-        else:
-            labels_t =  [self.idx2label[x.item()] for x in true_labels[:self.N]]
-            pred_labels =  [self.idx2label[x] for x in self.pred_labels]
+        labels_t =  [self.idx2label[x.item()] for x in true_labels[:self.N]]
+        pred_labels =  [self.idx2label[x] for x in self.pred_labels]
+        assert len(labels_t) == len(pred_labels)
         
         print(ClassificationReport("Event-Event-Rel-Global", labels_t, pred_labels, exclude_vague))
         if self.Nc > 0:
@@ -264,9 +258,6 @@ class Gurobi_Inference():
             pred_labels_c = [self.idx2label_c[x] for x in self.pred_labels_c]
 
             assert len(labels_c) == len(pred_labels_c)
-            if backward:
-                labels_c = labels_c[:int(self.Nc/2)]
-                pred_labels_c = pred_labels_c[:int(self.Nc/2)]
             correct = [x for x in range(len(labels_c)) if pred_labels_c[x] == labels_c[x]]
             print("Causal Accurracy is: %.4f" % (float(len(correct)) / float(len(labels_c))))
         return copy.deepcopy(self.pred_labels)

@@ -414,7 +414,7 @@ new_label_map = OrderedDict([('BEFORE', 'BEFORE'),
                              ('VAGUE', 'VAGUE')
                              ])
 
-causal_label_map = OrderedDict([('cause', 'causes'),
+causal_label_map = OrderedDict([('causes', 'causes'),
                                 ('caused_by', 'caused_by')
                                ])
 
