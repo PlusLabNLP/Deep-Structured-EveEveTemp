@@ -154,7 +154,8 @@ class NNClassifier(REDEveEveRelModel):
             best_params = cvresult[0][0]
             avg_epoch = cvresult[0][2]
             for k,v in best_params.items():
-                exec("args.%s=%s" % (k, v))
+                if k != 'seed':
+                    exec("args.%s=%s" % (k, v))
             selected_epoch = avg_epoch
 
         if args.refit_all:
@@ -325,7 +326,7 @@ class NNClassifier(REDEveEveRelModel):
             #    assert b==rev
 
             # choose to test on forward or backward
-            if in_dev:
+            if in_dev and args.devbytrain:
                 final_pred_labels = torch.cat((pred_labels_forward, pred_labels_backward), dim=0)
                 final_gt_labels = torch.cat((gt_labels_f, gt_labels_b), dim=0)
             else:
@@ -345,7 +346,8 @@ class NNClassifier(REDEveEveRelModel):
            
         if args.joint and (len(losses_c)>0):
             print("Evaluation causal loss: %.4f; accuracy: %.4f" % (torch.mean(losses_c).item(), float(correct)/float(len(losses_c))))
-
+        print('final_pred', len(final_pred_labels))
+        print('final_gt_labels', len(final_gt_labels))
         return final_pred_labels, torch.mean(losses_t).item(), final_gt_labels
 
     def _train(self, train_data, eval_data, emb, pos_emb, args, in_cv=False, test_data=None):
@@ -914,20 +916,21 @@ if __name__ == '__main__':
     p.add_argument('-skip_u', type=str2bool, default=True)
     p.add_argument('-n_splits', type=int, default=5)
     p.add_argument('-cuda', type=str2bool, default=True)
-    p.add_argument('-cv', type=str2bool, default=True)
+    p.add_argument('-cv', type=str2bool, default=False)
     p.add_argument('-selectparam', type=str2bool, default=False)
     p.add_argument('-cv_shuffle', type=str2bool, default=False)
     p.add_argument('-refit_all', type=str2bool, default=False)
-    p.add_argument('-readcvresult', type=str2bool, default=False)
+    p.add_argument('-readcvresult', type=str2bool, default=True)
     p.add_argument('--cvresultpath', type=str, default='')
     
-    p.add_argument('-save_model', type=str2bool, default=True)
+    p.add_argument('-save_model', type=str2bool, default=False)
     p.add_argument('--save_stamp', type=str, default="matres_local_2best_backTrue_trainposFalse")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=False)
     p.add_argument('--load_model_file', type=str, 
                    default='matres_0731local_UFFalse_backTrue_trainposTrue_jointFalse_cvFalse.pt')
-    p.add_argument('-write', type=str2bool, default=True)
+    p.add_argument('-write', type=str2bool, default=False)
+    p.add_argument('-devbytrain', type=str2bool, default=False)
     args = p.parse_args()
     print(args)
     """
