@@ -129,9 +129,10 @@ class NNClassifier(REDEveEveRelModel):
                 exec("args.%s=%s" % (k, v))
             if args.write:
                 with open('best_param/cv_bestparam_'+str(args.data_type)+
-                          '_TrainOn'+str(args.trainon)+
-                          '_uf'+str(args.usefeature)+'_trainpos'+str(args.train_pos_emb)+
-                          '_joint'+str(args.joint), 'w') as file:
+                          '_TrainOn'+str(args.trainon)+'_TestOn'+str(args.teston)+
+                          '_uf'+str(args.usefeature)+
+                          '_trainpos'+str(args.train_pos_emb)+'_joint'+
+                          str(args.joint)+'_devbytrain'+str(args.devbytrain), 'w') as file:
                     for k,v in vars(args).items():
                         if (k!='emb_array') and (k!='glove2vocab'):
                           file.write(str(k)+'   '+str(v)+'\n')
@@ -142,9 +143,11 @@ class NNClassifier(REDEveEveRelModel):
                 exec("args.%s=%s" % (k,v))
             if args.write:
                 with open('best_param/selectDev_bestparam_'+str(args.data_type)+
-                          '_TrainOn'+str(args.trainon)+
-                          '_uf'+str(args.usefeature)+'_trainpos'+str(args.train_pos_emb)+
-                          '_joint'+str(args.joint), 'w') as file:
+                          '_TrainOn'+str(args.trainon)+'_TestOn'+str(args.teston)+
+                          '_uf'+str(args.usefeature)+
+                          '_trainpos'+str(args.train_pos_emb)+'_joint'+
+                          str(args.joint)+'_devbytrain'+
+                          str(args.devbytrain), 'w') as file:
                     for k,v in vars(args).items():
                         if (k!='emb_array') and (k!='glove2vocab'):
                           file.write(str(k)+'   '+str(v)+'\n')
@@ -156,6 +159,7 @@ class NNClassifier(REDEveEveRelModel):
             for k,v in best_params.items():
                 if k != 'seed':
                     exec("args.%s=%s" % (k, v))
+                    print('args.%s=%s'%(k,eval("args.%s"%k)))
             selected_epoch = avg_epoch
 
         if args.refit_all:
@@ -346,8 +350,6 @@ class NNClassifier(REDEveEveRelModel):
            
         if args.joint and (len(losses_c)>0):
             print("Evaluation causal loss: %.4f; accuracy: %.4f" % (torch.mean(losses_c).item(), float(correct)/float(len(losses_c))))
-        print('final_pred', len(final_pred_labels))
-        print('final_gt_labels', len(final_gt_labels))
         return final_pred_labels, torch.mean(losses_t).item(), final_gt_labels
 
     def _train(self, train_data, eval_data, emb, pos_emb, args, in_cv=False, test_data=None):
@@ -623,9 +625,11 @@ class NNClassifier(REDEveEveRelModel):
             param_perf.append((param, f1, best_epoch))
             if args.write:
                 with open('best_param/selectDev_devResult_'+str(args.data_type)+
-                          '_TrainOn'+str(args.trainon)+
-                          '_uf'+str(args.usefeature)+'_trainpos'+str(args.train_pos_emb)+
-                          '_joint'+str(args.joint)+'.pickle', 'wb') as f:
+                          '_TrainOn'+str(args.trainon)+'_TestOn'+str(args.teston)+
+                          '_uf'+str(args.usefeature)+
+                          '_trainpos'+str(args.train_pos_emb)+'_joint'+
+                          str(args.joint)+'_devbytrain'+
+                          str(args.devbytrain)+'.pickle', 'wb') as f:
                     pickle.dump(sorted(param_perf, key=lambda x: x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
         params, f1, epoch = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
         print("*" * 50)
@@ -652,7 +656,19 @@ class NNClassifier(REDEveEveRelModel):
         dev_data = EventDataset(args.data_dir+type_dir, 
                                 "dev", args.glove2vocab, backward_dir)
         dev_generator = get_data_loader(dev_data, **params)
-        return self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)  
+        
+        seeds = [0, 10, 20]
+        accumu_f1 = 0.
+        accumu_epoch = 0.
+        for seed in seeds:
+            exec("args.%s=%s" % ('seed', seed))
+            f1, epoch = self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)
+            accumu_f1 += f1
+            accumu_epoch += epoch
+        avg_f1 = accumu_f1/float(len(seeds))
+        avg_epoch = accumu_epoch/float(len(seeds))
+
+        return avg_f1, avg_epoch
 
     def cross_validation(self, emb, pos_emb, args):
         param_perf = []
@@ -682,9 +698,11 @@ class NNClassifier(REDEveEveRelModel):
             param_perf.append((param, np.mean(f1s), np.mean(best_epoch)))
             if args.write:
                 with open('best_param/cv_devResult_'+str(args.data_type)+
-                          '_TrainOn'+str(args.trainon)+
-                          '_uf'+str(args.usefeature)+'_trainpos'+str(args.train_pos_emb)+
-                          '_joint'+str(args.joint)+'.pickle', 'wb') as f:
+                          '_TrainOn'+str(args.trainon)+'_TestOn'+str(args.teston)+
+                          '_uf'+str(args.usefeature)+
+                          '_trainpos'+str(args.train_pos_emb)+'_joint'+
+                          str(args.joint)+'_devbytrain'+str(args.devbytrain)+
+                          '.pickle', 'wb') as f:
                     pickle.dump(sorted(param_perf, key=lambda x: x[1], reverse=True), f, pickle.HIGHEST_PROTOCOL)
         params, f1, epoch = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
         print("*" * 50)
@@ -712,8 +730,19 @@ class NNClassifier(REDEveEveRelModel):
         dev_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split), 
                                 "dev", args.glove2vocab, backward_dir)
         dev_generator = get_data_loader(dev_data, **params)
+        
+        seeds = [0, 10, 20]
+        accumu_f1 = 0.
+        accumu_epoch = 0.
+        for seed in seeds:
+            exec("args.%s=%s" % ('seed', seed))
+            f1, epoch = self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)
+            accumu_f1 += f1
+            accumu_epoch += epoch
+        avg_f1 = accumu_f1/float(len(seeds))
+        avg_epoch = accumu_epoch/float(len(seeds))
 
-        return self._train(train_generator, dev_generator, emb, pos_emb, args, in_cv=True)
+        return avg_f1, avg_epoch
 
     def parallel_bootstrap(self, bs_n, emb = np.array([]), pos_emb = [], args=None, test_data=None):
 
@@ -887,7 +916,7 @@ def str2bool(v):
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
     # arguments
-    p.add_argument('-data_type', type=str, default="matres")
+    p.add_argument('-data_type', type=str, default="new")
     p.add_argument('-emb', type=int, default=300)
     p.add_argument('-hid', type=int, default=30)
     p.add_argument('-num_layers', type=int, default=1)
@@ -896,14 +925,14 @@ if __name__ == '__main__':
     p.add_argument('-num_causal', type=int, default=2)
     p.add_argument('-batch', type=int, default=32)
     p.add_argument('-epochs', type=int, default=30)
-    p.add_argument('-seed', type=int, default=0)
-    p.add_argument('-lr', type=float, default=0.001)
+    p.add_argument('-seed', type=int, default=100)
+    p.add_argument('-lr', type=float, default=0.002)
     p.add_argument('-attention', type=str2bool, default=False)
-    p.add_argument('-usefeature', type=str2bool, default=False)
+    p.add_argument('-usefeature', type=str2bool, default=True)
     p.add_argument('-sparse_emb', type=str2bool, default=False)
     p.add_argument('-train_pos_emb', type=str2bool, default=False)
     p.add_argument('-earlystop', type=int, default=5)
-    p.add_argument('-trainon', type=str, default='bothWselect',
+    p.add_argument('-trainon', type=str, default='bothway',
                    choices=['forward', 'bothway', 'bothWselect'])
     p.add_argument('-teston', type=str, default='forward',
                    choices=['forward', 'bothway', 'backward'])
@@ -916,20 +945,20 @@ if __name__ == '__main__':
     p.add_argument('-skip_u', type=str2bool, default=True)
     p.add_argument('-n_splits', type=int, default=5)
     p.add_argument('-cuda', type=str2bool, default=True)
-    p.add_argument('-cv', type=str2bool, default=False)
+    p.add_argument('-cv', type=str2bool, default=True)
     p.add_argument('-selectparam', type=str2bool, default=False)
     p.add_argument('-cv_shuffle', type=str2bool, default=False)
     p.add_argument('-refit_all', type=str2bool, default=False)
-    p.add_argument('-readcvresult', type=str2bool, default=True)
+    p.add_argument('-readcvresult', type=str2bool, default=False)
     p.add_argument('--cvresultpath', type=str, default='')
     
     p.add_argument('-save_model', type=str2bool, default=False)
-    p.add_argument('--save_stamp', type=str, default="matres_local_2best_backTrue_trainposFalse")
+    p.add_argument('--save_stamp', type=str, default="")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=False)
     p.add_argument('--load_model_file', type=str, 
-                   default='matres_0731local_UFFalse_backTrue_trainposTrue_jointFalse_cvFalse.pt')
-    p.add_argument('-write', type=str2bool, default=False)
+                   default='')
+    p.add_argument('-write', type=str2bool, default=True)
     p.add_argument('-devbytrain', type=str2bool, default=False)
     args = p.parse_args()
     print(args)
@@ -978,17 +1007,14 @@ if __name__ == '__main__':
     '''
     # Matres
     if args.data_type == 'matres':
-        args.params = {'hid': [30,40,50,70], 'dropout': [0.5,0.6], 
-                       'lr': [0.002, 0.001], 'num_layers': [1, 2],
-                       'seed': [0, 10]}
+        args.params = {'hid': [30,40,50,70], 'dropout': [0.4,0.5,0.6,0.7], 
+                       'lr': [0.002, 0.001], 'num_layers': [1, 2]}
     # TCR
     if args.data_type == 'new':
         args.params = {'hid': [20,30,40], 'dropout': [0.5,0.6,0.7], 
-                       'lr': [0.002, 0.001], 'num_layers': [1, 2],
-                       'seed': [0, 10]}
+                       'lr': [0.002, 0.001], 'num_layers': [1, 2]}
     # TBD
     if args.data_type == 'tbd':
-        args.params = {'hid': [40,50,60,70], 'dropout': [0.3,0.5,0.6], 
-                       'lr': [0.002], 'num_layers': [1, 2],
-                       'seed': [0, 10]}
+        args.params = {'hid': [40,50,60,70], 'dropout': [0.3,0.4,0.5,0.6], 
+                       'lr': [0.002], 'num_layers': [1, 2]}
     main(args)
