@@ -916,16 +916,16 @@ def str2bool(v):
 if __name__ == '__main__':
     p = argparse.ArgumentParser()
     # arguments
-    p.add_argument('-data_type', type=str, default="new")
+    p.add_argument('-data_type', type=str, default="tbd")
     p.add_argument('-emb', type=int, default=300)
-    p.add_argument('-hid', type=int, default=30)
+    p.add_argument('-hid', type=int, default=60)
     p.add_argument('-num_layers', type=int, default=1)
     p.add_argument('-dropout', type=float, default=0.5)
     p.add_argument('-joint', type=str2bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
     p.add_argument('-batch', type=int, default=32)
     p.add_argument('-epochs', type=int, default=30)
-    p.add_argument('-seed', type=int, default=100)
+    p.add_argument('-seed', type=int, default=500)
     p.add_argument('-lr', type=float, default=0.002)
     p.add_argument('-attention', type=str2bool, default=False)
     p.add_argument('-usefeature', type=str2bool, default=True)
@@ -945,20 +945,20 @@ if __name__ == '__main__':
     p.add_argument('-skip_u', type=str2bool, default=True)
     p.add_argument('-n_splits', type=int, default=5)
     p.add_argument('-cuda', type=str2bool, default=True)
-    p.add_argument('-cv', type=str2bool, default=True)
+    p.add_argument('-cv', type=str2bool, default=False)
     p.add_argument('-selectparam', type=str2bool, default=False)
     p.add_argument('-cv_shuffle', type=str2bool, default=False)
     p.add_argument('-refit_all', type=str2bool, default=False)
-    p.add_argument('-readcvresult', type=str2bool, default=False)
+    p.add_argument('-readcvresult', type=str2bool, default=True)
     p.add_argument('--cvresultpath', type=str, default='')
     
-    p.add_argument('-save_model', type=str2bool, default=False)
+    p.add_argument('-save_model', type=str2bool, default=True)
     p.add_argument('--save_stamp', type=str, default="")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=False)
     p.add_argument('--load_model_file', type=str, 
                    default='')
-    p.add_argument('-write', type=str2bool, default=True)
+    p.add_argument('-write', type=str2bool, default=False)
     p.add_argument('-devbytrain', type=str2bool, default=False)
     args = p.parse_args()
     print(args)
@@ -1015,6 +1015,6 @@ if __name__ == '__main__':
                        'lr': [0.002, 0.001], 'num_layers': [1, 2]}
     # TBD
     if args.data_type == 'tbd':
-        args.params = {'hid': [40,50,60,70], 'dropout': [0.3,0.4,0.5,0.6], 
-                       'lr': [0.002], 'num_layers': [1, 2]}
+        args.params = {'hid': [30,40,50,60,70], 'dropout': [0.3,0.4,0.5,0.6], 
+                       'lr': [0.002], 'num_layers': [1, 2], 'batch':[16]}
     main(args)

@@ -9,7 +9,7 @@ import copy
 
 class Gurobi_Inference():
     
-    def __init__(self, pairs, probs, pairs_c, probs_c, label2idx, label2idx_c):
+    def __init__(self, pairs, probs, pairs_c, probs_c, label2idx, label2idx_c, backward=True):
         '''
         pairs: list of str tuple ; (docid_eventid, docid_eventid)
         probs: a numpy matrix of local prediction scores; (#instance, #classes)
@@ -40,6 +40,7 @@ class Gurobi_Inference():
         self.pred_labels_c = []
         if self.Nc > 0:
             self.pred_labels_c = list(np.argmax(probs_c, axis=1))
+        self.backward=backward
 
     def define_vars(self):
         var_table = []
@@ -87,7 +88,7 @@ class Gurobi_Inference():
         pair2idx = self.pair2idx
         for k, (e1, e2) in self.idx2pair.items():
             for (re1, re2), i in pair2idx.items():
-                if e2 == re1 and (e1, re2) in pair2idx.keys():
+                if (e2 == re1) and ((e1, re2) in pair2idx.keys()):
                     transitivity_samples.append((pair2idx[(e1, e2)], pair2idx[(re1, re2)], pair2idx[(e1, re2)]))
         return transitivity_samples
     
@@ -182,15 +183,18 @@ class Gurobi_Inference():
             for ci in self.transitivity_criteria(var_table, triple):
                 self.model.addConstr(ci <= 1, "c2_%s" % t)
                 t += 1
-        # Constraint 3: Symmetry
-        offset = int(len(self.pairs) / 2)
-        for n in range(offset):
-            for si in self.symmetry_constraints(var_table, n):
-                self.model.addConstr(si,  "c3_%s" % n)
-        offset = int(len(self.pairs_c) / 2)
-        for n in range(offset):
-            for si in self.symmetry_constraints(var_table, n+self.N, causal=True):
-                self.model.addConstr(si,  "c3_1_%s" % n)
+        
+        if self.backward:
+            # Constraint 3: Symmetry
+            offset = int(len(self.pairs) / 2)
+            for n in range(offset):
+                for si in self.symmetry_constraints(var_table, n):
+                    self.model.addConstr(si,  "c3_%s" % n)
+            offset = int(len(self.pairs_c) / 2)
+            for n in range(offset):
+                for si in self.symmetry_constraints(var_table, n+self.N, causal=True):
+                    self.model.addConstr(si,  "c3_1_%s" % n)
+        
         # Constraint 3: grammar rules
         #for n in range(self.N):
         #    label = self.tense_relation(n)
@@ -241,23 +245,22 @@ class Gurobi_Inference():
                     if self.pred_labels[s_idx] != c_idx:
                         self.pred_labels[s_idx] = c_idx
                         count += 1
-        print('# of global correction: %s' % count)
-        print('Objective Function Value:', self.model.objVal)
+        #print('# of global correction: %s' % count)
+        #print('Objective Function Value:', self.model.objVal)
         return 
     
-    def evaluate(self, true_labels, exclude_vague=True, backward=True):
+    def evaluate(self, true_labels, exclude_vague=True):
         assert len(true_labels) == len(self.pred_labels) + len(self.pred_labels_c)
-        assert backward == True
         labels_t =  [self.idx2label[x.item()] for x in true_labels[:self.N]]
         pred_labels =  [self.idx2label[x] for x in self.pred_labels]
         assert len(labels_t) == len(pred_labels)
         
-        print(ClassificationReport("Event-Event-Rel-Global", labels_t, pred_labels, exclude_vague))
+        #print(ClassificationReport("Event-Event-Rel-Global", labels_t, pred_labels, exclude_vague))
         if self.Nc > 0:
             labels_c = [self.idx2label_c[x.item()] for x in true_labels[self.N:]]
             pred_labels_c = [self.idx2label_c[x] for x in self.pred_labels_c]
 
             assert len(labels_c) == len(pred_labels_c)
             correct = [x for x in range(len(labels_c)) if pred_labels_c[x] == labels_c[x]]
-            print("Causal Accurracy is: %.4f" % (float(len(correct)) / float(len(labels_c))))
+            #print("Causal Accurracy is: %.4f" % (float(len(correct)) / float(len(labels_c))))
         return copy.deepcopy(self.pred_labels)
