@@ -117,6 +117,7 @@ class BiLSTM(nn.Module):
         # pack and pass to lstm module and then pad again
         inputs = torch.cat((emb, pos), dim=2)
         pack_inputs = pack_padded_sequence(inputs, seq_lens, batch_first=True, enforce_sorted=False)
+        self.lstm.flatten_parameters()
         out, _ = self.lstm(pack_inputs)
         out, seq_lens = pad_packed_sequence(out, batch_first=True, padding_value=0.0) # (batch, seq_len, 2*hid_size)
         

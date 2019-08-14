@@ -56,6 +56,12 @@ class REDEvaluator:
             return ClassificationReport(self.model.name, true_labels, pred_labels, False)
         else:
             return ClassificationReport(self.model.name, true_labels, pred_labels)
+    
+    def get_score(self, test_data, args):
+        preds, loss, true_labels = self.model.predict(self.model.model, test_data, args, in_dev=False)
+        preds = preds.cpu().tolist()
+        true_labels = true_labels.cpu().tolist()
+        return self.model.weighted_f1(preds, true_labels)[0]
 
     def for_analysis(self, ids, golds, preds, test_data, outfile):
         with open(outfile, 'w') as file:
@@ -185,7 +191,7 @@ class NNClassifier(REDEveEveRelModel):
         
         best_f1, _ = self._train(train_data, dev_data, emb, pos_emb, args)
         print("Final Dev F1: %.4f" % best_f1)
-        return
+        return best_f1
 
     def predict(self, model, data, args, in_dev=False):
         '''
@@ -571,7 +577,7 @@ class NNClassifier(REDEveEveRelModel):
                     early_stop_counter += 1
         print("Final Evaluation F1: %.4f" % best_eval_f1)
         print("*"*50)
-        if len(eval_data) == 0:
+        if len(eval_data) == 0 or (args.epochs==0):
             self.model = copy.deepcopy(model)
             best_epoch = args.epochs 
 
@@ -866,7 +872,7 @@ class NNClassifier(REDEveEveRelModel):
         delta_kl = F.kl_div(logp_hat, y_pred)
         return delta_kl
 
-def main(args):
+def main_local(args):
     data_dir = args.data_dir
     params = {'batch_size': args.batch,
               'shuffle': False}
@@ -892,16 +898,17 @@ def main(args):
     models = [NNClassifier()]
     s_time = time.time()
     for model in models:
-        print(f"\n======={model.name}=====")
         # if boostrap testing, we only output a list of test f1 scores 
         if args.bootstrap:
             model.train_epoch(train_generator, dev_generator, args, test_data = test_generator)
             print("Finished Bootstrap Testing")
         else:
-            model.train_epoch(train_generator, dev_generator, args)
-            print('total time escape', time.time()-s_time)
+            dev_f1 = model.train_epoch(train_generator, dev_generator, args)
             evaluator = REDEvaluator(model)
-            print(evaluator.evaluate(test_generator, args))
+            #print(evaluator.evaluate(test_generator, args))
+            score = evaluator.get_score(test_generator, args)
+            print('final test f1: %s' %(score))
+    return float(dev_f1), float(score)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -1017,4 +1024,4 @@ if __name__ == '__main__':
     if args.data_type == 'tbd':
         args.params = {'hid': [30,40,50,60,70], 'dropout': [0.3,0.4,0.5,0.6], 
                        'lr': [0.002], 'num_layers': [1, 2], 'batch':[16]}
-    main(args)
+    main_local(args)

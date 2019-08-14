@@ -237,6 +237,7 @@ class NNClassifier(REDEveEveRelModel):
         prob_table = probs.cpu().data.numpy()
         gt_labels = torch.cat(gt_labels+gt_labels_r, dim=0)
         prob_table_c = np.zeros((0, 0))
+        ground_truth = gt_labels
         if (len(probs_c)>0) and (args.joint):
             if args.trainon=='bothWselect':
                 max_probs_f_c = torch.cat(probs_c, dim=0).max(1)[0].reshape(-1,1)
@@ -257,12 +258,12 @@ class NNClassifier(REDEveEveRelModel):
                 probs_c = torch.cat((probs_c+probs_c_r), dim=0)
             prob_table_c = probs_c.cpu().data.numpy()
             gt_labels_c = torch.cat(gt_labels_c+gt_labels_c_r, dim=0)
-        
+            ground_truth = torch.cat((gt_labels, gt_labels_c), dim=0)
         # find max prediction based on global prediction 
         best_pred_idx, best_pred_idx_c, predictions=\
             self.global_prediction(eval_pairs, prob_table, eval_pairs_c,
                                    prob_table_c, evaluate=True,
-                                   true_labels=gt_labels, backward=(args.trainon!='forward'))
+                                   true_labels=ground_truth, backward=(args.trainon!='forward'))
         loss = self.loss_func(best_pred_idx, gt_labels, probs, args.margin)
         print("Evaluation loss: %.4f" % loss.cpu().data.numpy())
         print("*"*50)
@@ -389,7 +390,6 @@ class NNClassifier(REDEveEveRelModel):
                     for i in range(len(doc_id)):
                         left = pair[i][0]
                         right = pair[i][1]
-                        print('left', left)
                         train_pairs.append(("%s_%s"%(doc_id[i], left), "%s_%s"%(doc_id[i], right)))
                     probs.append(prob)
                     gt_labels.append(label)
@@ -514,7 +514,6 @@ class NNClassifier(REDEveEveRelModel):
             optimizer.step()                               
             if not in_cv:
                 print("Train loss: %.4f" % loss.cpu().item())
-                print()
             ###### Evaluate at the end of each epoch ##### 
             if len(eval_data) > 0:
                 eval_gt, eval_preds = self.predict(model, eval_data, args, in_dev=True)
@@ -525,7 +524,6 @@ class NNClassifier(REDEveEveRelModel):
                     if not in_cv:
                         print('Save model in %s epoch' %(epoch+1))
                         print('Best Evaluation F1: %.4f' %(eval_f1))
-                        print("*"*50)
                         self.model = copy.deepcopy(model)
                     best_epoch = epoch + 1
                     early_stop_counter=0
@@ -537,7 +535,7 @@ class NNClassifier(REDEveEveRelModel):
                 print("*"*50)
         print("Final Evaluation F1: %.4f" % best_eval_f1)
         print("*"*50)
-        if len(eval_data) == 0 :
+        if len(eval_data) == 0 or (args.epochs==0):
             self.model = copy.deepcopy(model)
             best_epoch = args.epochs
         
@@ -917,7 +915,7 @@ def temporal_awareness(data, pred_labels, data_type, with_timex=False):
     
     return evaluate_all(gold_rels, pred_rels)
 
-def main(args):
+def main_global(args):
     data_dir = args.data_dir
     params = {'batch_size': args.batch,
               'shuffle': False}
@@ -954,34 +952,6 @@ def main(args):
             score = evaluator.get_score(test_generator, args)
             print('final test f1: %.4f' %(score))
     return float(dev_f1), float(score)
-
-def gridsearch(args):
-    param_perf = [] 
-    for param in ParameterGrid(args.params):
-        param_str = ""
-        for k,v in param.items():
-            param_str += "%s=%s" % (k, v)
-            param_str += " "
-        print("*" * 50)
-        print("Train parameters: %s" % param_str)
-        for k,v in param.items():
-            exec("args.%s=%s" % (k, v))
-        dev_f1, test_f1 = main(args)
-        param_perf.append((param, test_f1, dev_f1))
-        if args.write:
-            with open('best_param/global_Result_'+str(args.data_type)+
-                      '_TrainOn'+str(args.trainon)+'_TestOn'+str(args.teston)+
-                      '_devbytrain'+str(args.devbytrain)+
-                      '_localmodel'+str(args.load_model_file)+
-                      '.pickle', 'wb') as f:
-                pickle.dump(sorted(param_perf, key=lambda x:x[1], reverse=True), 
-                            f, pickle.HIGHEST_PROTOCOL)
-    params, f1, dev_f1 = sorted(param_perf, key=lambda x: x[1], reverse=True)[0]
-    print('*' * 50)
-    print("Best F1: %s" % f1)
-    print("Best Parameters Are: %s " % params)
-    print("Best Dev F1 is: %s" % dev_f1)
-    print('*' * 50)
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -1088,6 +1058,5 @@ if __name__ == '__main__':
                    'decay':[0.4, 0.7, 0.9, 0.1, 0.005, 0.0005],
                    'seed':[1, 123, 100, 200],
                    'margin':[0.0, 1.0, 5.0]}
-    gridsearch(args)
     '''
-    main(args)
+    main_global(args)
