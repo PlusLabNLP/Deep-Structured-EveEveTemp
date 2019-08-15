@@ -2,3 +2,4 @@ scripts/*
 submit_jobs.py
 best_param/*
 deprecate/*
+gridsearch.py

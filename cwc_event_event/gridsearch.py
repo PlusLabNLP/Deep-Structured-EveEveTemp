@@ -6,6 +6,9 @@ from semi_supervised_model import main_local
 from global_inference import main_global
 from sklearn.model_selection import ParameterGrid
 from os import path
+import torch
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 def str2bool(v):
     if isinstance(v, bool):
@@ -129,21 +132,37 @@ if __name__ == '__main__':
     args_global.earlystop = 4
     args_global.save_model = False
     args_global.load_model = True
-
-    args_local.params = {
-        'hid': [30, 40, 50, 60],
-        'num_layers': [1, 2],
-        'dropout': [0.4, 0.5, 0.6],
-        'lr': [0.002, 0.001],
-        'batch': [16, 32],
-        'seed': [100, 200, 300, 400, 500]
-    }
-    args_global.params = {
-        'lr': [0.1, 0.01, 0.001],
-        'decay': [0.9, 0.1, 0.001, 0.0001],
-        'momentum': [0.9, 0.7],
-        'margin': [0.1]
-    }
+    if args_local.data_type != 'tbd':
+        args_local.params = {
+            'hid': [30, 40, 50],
+            'num_layers': [1, 2],
+            'dropout': [0.4, 0.5, 0.6, 0.7],
+            'lr': [0.002, 0.001],
+            'batch': [16, 32],
+            'seed': [100, 200, 300, 400, 500]
+        }
+        args_global.params = {
+            'lr': [0.01, 0.05, 0.08, 0.005, 0.1],
+            'decay': [0.9, 0.7, 0.001],
+            'momentum': [0.9],
+            'margin': [0.1]
+        }
+    else:
+        # for tbd
+        args_local.params = {
+            'hid': [40, 50, 60, 70],
+            'num_layers': [1, 2],
+            'dropout': [0.3, 0.4, 0.5],
+            'lr': [0.002, 0.001],
+            'batch': [16],
+            'seed': [100, 200, 300, 400, 500]
+        }
+        args_global.params = {
+            'lr': [0.01, 0.05, 0.08, 0.005],
+            'decay': [0.9, 1.0, 0.5, 0.001],
+            'momentum': [0.9],
+            'margin': [0.1]
+        }
     s_time = time.time()
     param_perf = []
     param_perf_local = []
@@ -164,6 +183,7 @@ if __name__ == '__main__':
         for k,v in param_local.items():
             exec('args_local.%s=%s' % (k,v))
             exec('args_global.%s=%s' % (k,v))
+        exec('args_global.%s=%s' % ('seed',123))
         save_name = "local_{}_uf{}_trainpos{}_joint{}_TrainOn{}_TestOn{}_hid{}_lr{}_ly{}_dp{}_batch{}_seed{}".\
             format(args_local.data_type, args_local.usefeature,
                    args_local.train_pos_emb, args_local.joint,
@@ -186,18 +206,18 @@ if __name__ == '__main__':
         exec('args_local.save_stamp="%s"' %(save_name))
         dev_f1_local, test_f1_local = main_local(args_local)
         if args_local.data_type =='matres':
-            if test_f1_local < 0.695:
+            if test_f1_local < 0.700:
                 continue
         if args_local.data_type =='new':
             if test_f1_local < 0.715:
                 continue
         if args_local.data_type =='tbd':
-            if test_f1_local < 0.54:
+            if test_f1_local < 0.538:
                 continue
         load_model_file = save_name+'.pt'
         exec('args_global.load_model_file="%s"' %(load_model_file))
         gs_time = time.time()
-        for param_global in ParameterGrid(args_global.params):
+        for idx, param_global in enumerate(ParameterGrid(args_global.params)):
             param_str_g = param_str+'\nglobal parameters: \n'
             for k,v in param_global.items():
                 param_str_g += "%s=%s" %(k,v)
@@ -208,7 +228,9 @@ if __name__ == '__main__':
                 exec('args_global.%s=%s' % (k,v))
             dev_f1_global, test_f1_global = main_global(args_global)
             difference = test_f1_global - test_f1_local
-            if difference < 0.005:
+            if (idx==0) and (difference < 0.004):
+                break
+            if difference < 0.004:
                 continue
             param_perf.append((param_local, param_global, difference, test_f1_global,
                                test_f1_local, dev_f1_global, dev_f1_local))

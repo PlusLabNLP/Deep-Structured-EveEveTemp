@@ -927,21 +927,21 @@ if __name__ == '__main__':
     p.add_argument('-emb', type=int, default=300)
     p.add_argument('-hid', type=int, default=60)
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-dropout', type=float, default=0.5)
+    p.add_argument('-dropout', type=float, default=0.4)
     p.add_argument('-joint', type=str2bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
-    p.add_argument('-batch', type=int, default=32)
-    p.add_argument('-epochs', type=int, default=30)
+    p.add_argument('-batch', type=int, default=16)
+    p.add_argument('-epochs', type=int, default=35)
     p.add_argument('-seed', type=int, default=500)
     p.add_argument('-lr', type=float, default=0.002)
     p.add_argument('-attention', type=str2bool, default=False)
     p.add_argument('-usefeature', type=str2bool, default=True)
     p.add_argument('-sparse_emb', type=str2bool, default=False)
     p.add_argument('-train_pos_emb', type=str2bool, default=False)
-    p.add_argument('-earlystop', type=int, default=5)
+    p.add_argument('-earlystop', type=int, default=7)
     p.add_argument('-trainon', type=str, default='bothway',
                    choices=['forward', 'bothway', 'bothWselect'])
-    p.add_argument('-teston', type=str, default='forward',
+    p.add_argument('-teston', type=str, default='bothway',
                    choices=['forward', 'bothway', 'backward'])
     
     p.add_argument('-bert_fts', type=str2bool, default=False)
@@ -956,11 +956,11 @@ if __name__ == '__main__':
     p.add_argument('-selectparam', type=str2bool, default=False)
     p.add_argument('-cv_shuffle', type=str2bool, default=False)
     p.add_argument('-refit_all', type=str2bool, default=False)
-    p.add_argument('-readcvresult', type=str2bool, default=True)
+    p.add_argument('-readcvresult', type=str2bool, default=False)
     p.add_argument('--cvresultpath', type=str, default='')
     
-    p.add_argument('-save_model', type=str2bool, default=True)
-    p.add_argument('--save_stamp', type=str, default="")
+    p.add_argument('-save_model', type=str2bool, default=False)
+    p.add_argument('--save_stamp', type=str, default="local_matres_ufTrue_trainposFalse_jointFalse_TrainOnforward_TestOnforward_hid40_lr0.001_ly1_dp0.5_batch16_seed200")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=False)
     p.add_argument('--load_model_file', type=str, 

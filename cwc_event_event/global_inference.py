@@ -29,10 +29,10 @@ from temporal_evaluation import *
 from nn_model import BiLSTM
 from dataloader import get_data_loader
 from dataset import EventDataset
+import os
  
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
-torch.manual_seed(123)
 
 @dataclass
 class REDEvaluator:
@@ -968,24 +968,24 @@ if __name__ == '__main__':
     p = argparse.ArgumentParser()
     p.add_argument('-data_type', type=str, default="tbd")
     p.add_argument('-emb', type=int, default=300)
-    p.add_argument('-hid', type=int, default=40)
+    p.add_argument('-hid', type=int, default=60)
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-dropout', type=float, default=0.5)
+    p.add_argument('-dropout', type=float, default=0.4)
     p.add_argument('-joint', type=str2bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
     p.add_argument('-batch', type=int, default=16)
-    p.add_argument('-epochs', type=int, default=15)
+    p.add_argument('-epochs', type=int, default=10)
     p.add_argument('-optimizer',  type=str, choices=['Adam', 'SGD'],
-                   default='Adam')
-    p.add_argument('-seed', type=int, default=300)
-    p.add_argument('-lr', type=float, default=0.001)
-    p.add_argument('-decay', type=float, default=0.0001)
+                   default='SGD')
+    p.add_argument('-seed', type=int, default=123)
+    p.add_argument('-lr', type=float, default=0.01)
+    p.add_argument('-decay', type=float, default=0.9)
     p.add_argument('-momentum', type=float, default=0.9)
     p.add_argument('-attention', type=str2bool, default=False)
     p.add_argument('-usefeature', type=str2bool, default=False)
     p.add_argument('-sparse_emb', type=str2bool, default=False)
     p.add_argument('-train_pos_emb', type=str2bool, default=False)
-    p.add_argument('-earlystop', type=int, default=5)
+    p.add_argument('-earlystop', type=int, default=4)
     p.add_argument('-trainon', type=str, default='bothway',
                    choices=['forward', 'bothway', 'bothWselect'])
     p.add_argument('-teston', type=str, default='forward',
@@ -1011,9 +1011,9 @@ if __name__ == '__main__':
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=True)
     p.add_argument('--load_model_file', type=str, 
-                   default='local_tbd_TrainOnbothway_TestOnforward_ufFalse_trainposFalse_devbytrainFalse_seed300.pt')
+                   default='local_tbd_ufFalse_trainposFalse_jointFalse_TrainOnbothway_TestOnforward_hid60_lr0.002_ly1_dp0.4_batch16_seed500.pt')
     p.add_argument('--margin', type=float, default=0.1)
-    p.add_argument('-write', type=str2bool, default=True)
+    p.add_argument('-write', type=str2bool, default=False)
     p.add_argument('-devbytrain', type=str2bool, default=False)
     args = p.parse_args()
     print(args)
@@ -1059,4 +1059,5 @@ if __name__ == '__main__':
                    'seed':[1, 123, 100, 200],
                    'margin':[0.0, 1.0, 5.0]}
     '''
+    #os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobi.lic"
     main_global(args)
