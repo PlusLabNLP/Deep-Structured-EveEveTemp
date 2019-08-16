@@ -1,5 +1,8 @@
 scripts/*
 submit_jobs.py
+submit_jobs_bert.py
 best_param/*
 deprecate/*
 gridsearch.py
+gridsearch_bert.py
+

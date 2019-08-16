@@ -689,18 +689,21 @@ class NNClassifier(REDEveEveRelModel):
         params = {'batch_size': args.batch,
                   'shuffle': False}
         if args.bert_fts:
-            type_dir = "all_bert_%sfts/" % args.n_fts
+            type_dir = "all_bertemb/"
         else:
             type_dir = "all/"
         backward_dir = ""
         if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-            backward_dir = args.data_dir + "all_backward/"
+            if args.bert_fts:
+                backward_dir = args.data_dir + "all_backward_bertemb/"
+            else:
+                backward_dir = args.data_dir + "all_backward/"
 
         train_data = EventDataset(args.data_dir+type_dir,"train",
-                                  args.glove2vocab,backward_dir)
+                                  args.glove2vocab, backward_dir, args.bert_fts)
         train_generator = get_data_loader(train_data, **params)
         dev_data = EventDataset(args.data_dir+type_dir,"dev",
-                                args.glove2vocab,backward_dir)
+                                args.glove2vocab, backward_dir, args.bert_fts)
         dev_generator = get_data_loader(dev_data, **params)
         seeds = [0, 10, 20]
         accumu_f1 = 0.
@@ -718,19 +721,22 @@ class NNClassifier(REDEveEveRelModel):
         params = {'batch_size': args.batch,
                   'shuffle': False}
         if args.bert_fts:
-            type_dir = "cv_bert_%sfts" % args.n_fts
+            type_dir = "cv_bertemb"
         else:
             type_dir = "cv_shuffle" if args.cv_shuffle else 'cv'
         
         backward_dir = ""
         if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-            backward_dir = "%scv_backward/fold%s/" % (args.data_dir, split)
+            if args.bert_fts:
+                backward_dir = "%scv_backward_bertemb/fold%s/" % (args.data_dir, split)
+            else:
+                backward_dir = "%scv_backward/fold%s/" % (args.data_dir, split)
         train_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir,split),"train",
-                                  args.glove2vocab,backward_dir)
+                                  args.glove2vocab,backward_dir,args.bert_fts)
         train_generator = get_data_loader(train_data, **params)
 
         dev_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split),"dev",
-                                args.glove2vocab,backward_dir)
+                                args.glove2vocab,backward_dir,args.bert_fts)
         dev_generator = get_data_loader(dev_data, **params)
         seeds = [0, 10, 20]
         accumu_f1 = 0.
@@ -819,14 +825,17 @@ class NNClassifier(REDEveEveRelModel):
             params = {'batch_size': args.batch,
                       'shuffle': False}
             if args.bert_fts:
-                type_dir = 'all_bert_%sfts/'%args.n_fts
+                type_dir = "all_bertemb/"
             else:
                 type_dir = 'all/'
             data_dir_back = ""
             if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-                data_dir_back = args.data_dir + 'all_backward/'
-            t_data = EventDataset(args.data_dir+type_dir,'train',args.glove2vocab,data_dir_back)
-            d_data = EventDataset(args.data_dir+type_dir,'dev',args.glove2vocab,data_dir_back)
+                if args.bert_fts:
+                    data_dir_back = args.data_dir + "all_backward_bertemb/"
+                else:
+                    data_dir_back = args.data_dir + "all_backward/"
+            t_data = EventDataset(args.data_dir+type_dir,'train',args.glove2vocab,data_dir_back,args.bert_fts)
+            d_data = EventDataset(args.data_dir+type_dir,'dev',args.glove2vocab,data_dir_back,args.bert_fts)
             t_data.merge_dataset(d_data)
             train_data = get_data_loader(t_data, **params)
             dev_data = []
@@ -916,25 +925,38 @@ def temporal_awareness(data, pred_labels, data_type, with_timex=False):
     return evaluate_all(gold_rels, pred_rels)
 
 def main_global(args):
+    if args.data_type=='new':
+        os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobi.lic"
+    elif args.data_type=='matres':
+        os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi.lic"
     data_dir = args.data_dir
     params = {'batch_size': args.batch,
               'shuffle': False}
     if args.bert_fts:
-        type_dir = "all_bert_%sfts/" % args.n_fts
+        type_dir = "all_bertemb/"
     else:
         type_dir = "all/"
     data_dir_back = ""
     if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-        data_dir_back = args.data_dir + "all_backward/"
-    train_data = EventDataset(args.data_dir + type_dir, "train", args.glove2vocab, data_dir_back)
+        if args.bert_fts:
+            data_dir_back = args.data_dir + "all_backward_bertemb/"
+        else:
+            data_dir_back = args.data_dir + "all_backward/"
+    train_data = EventDataset(args.data_dir + type_dir, "train", 
+                              args.glove2vocab, data_dir_back, args.bert_fts)
     print('train_data: %s in total' % len(train_data))
     train_generator = get_data_loader(train_data, **params)
-    dev_data = EventDataset(args.data_dir + type_dir, "dev", args.glove2vocab, data_dir_back)
+    dev_data = EventDataset(args.data_dir + type_dir, "dev", 
+                            args.glove2vocab, data_dir_back, args.bert_fts)
     print('dev_data: %s in total' % len(dev_data))
     dev_generator = get_data_loader(dev_data, **params)
     
-    data_dir_back = args.data_dir + "all_backward/"
-    test_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, data_dir_back)
+    if args.bert_fts:
+        data_dir_back = args.data_dir + "all_backward_bertemb/"
+    else:
+        data_dir_back = args.data_dir + "all_backward/"
+    test_data = EventDataset(args.data_dir + type_dir, "test", 
+                             args.glove2vocab, data_dir_back, args.bert_fts)
     test_generator = get_data_loader(test_data, **params)
     
     s_time = time.time() 
@@ -992,6 +1014,7 @@ if __name__ == '__main__':
                    choices=['forward', 'bothway', 'backward'])
     
     p.add_argument('-bert_fts', type=str2bool, default=False)
+    p.add_argument('-bert_dim', type=int, default=768)
     p.add_argument('-n_fts', type=int, default=15)
     p.add_argument('-bootstrap', type=str2bool, default=False)
     p.add_argument('-loss_u', type=str, default='')
@@ -1059,5 +1082,6 @@ if __name__ == '__main__':
                    'seed':[1, 123, 100, 200],
                    'margin':[0.0, 1.0, 5.0]}
     '''
-    #os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobi.lic"
+    if args.data_type=='new':
+        os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobi.lic"
     main_global(args)

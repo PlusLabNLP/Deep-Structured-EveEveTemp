@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 
 class EventDataset(data.Dataset):
-    def __init__(self, data_dir, data_split, glove2vocab, data_dir_rev=""):
+    def __init__(self, data_dir, data_split, glove2vocab, data_dir_rev="", bert=False):
         'Initialization'
         self.glove2vocab = glove2vocab
         with open(data_dir + data_split + '.pickle', 'rb') as handle:
@@ -14,6 +14,7 @@ class EventDataset(data.Dataset):
             with open(data_dir_rev + data_split + '.pickle', 'rb') as handle:
                 data_rev = pickle.load(handle)
             self.data += data_rev
+        self.bert = bert   
 
     def __len__(self):
         'Denotes the total number of samples'
@@ -26,7 +27,10 @@ class EventDataset(data.Dataset):
         sample_id = sample[1]
         pair = sample[2]
         label = sample[3]
-        sent = torch.LongTensor([self.glove2vocab[x] for x in sample[4][0]])
+        if self.bert:
+            sent = torch.FloatTensor(sample[4][0][0]) # sent_len x bert_feature_dim
+        else:
+            sent = torch.LongTensor([self.glove2vocab[x] for x in sample[4][0]])
         pos = torch.LongTensor(sample[4][1])
         fts = torch.FloatTensor(sample[4][2])
         rev = sample[4][3]

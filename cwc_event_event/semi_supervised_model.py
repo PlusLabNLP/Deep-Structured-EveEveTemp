@@ -96,7 +96,7 @@ class REDEvaluator:
 class NNClassifier(REDEveEveRelModel):
     label_probs: Optional[List[float]] = None
     
-    def train_epoch(self, train_data, dev_data, args, test_data = None):
+    def train_epoch(self, train_data, dev_data, args, test_data=None):
         if args.data_type == "red":
             label_map = red_label_map
         elif args.data_type == "matres":
@@ -174,15 +174,18 @@ class NNClassifier(REDEveEveRelModel):
             params = {'batch_size': args.batch,
                       'shuffle': False}
             if args.bert_fts:
-                type_dir = "all_bert_%sfts/" % args.n_fts
+                type_dir = "all_bertemb/"
             else:
                 type_dir = "all/"
             data_dir_back = ""
             if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-                data_dir_back = args.data_dir + "all_backward/"
-            t_data = EventDataset(args.data_dir+type_dir,"train",args.glove2vocab,data_dir_back)
+                if args.bert_fts:
+                    data_dir_back = args.data_dir + "all_backward_bertemb/"
+                else:
+                    data_dir_back = args.data_dir + "all_backward/"
+            t_data = EventDataset(args.data_dir+type_dir,"train",args.glove2vocab,data_dir_back,args.bert_fts)
             print('total train_data %s samples' %len(t_data))
-            d_data = EventDataset(args.data_dir+type_dir,"dev",args.glove2vocab,data_dir_back)
+            d_data = EventDataset(args.data_dir+type_dir,"dev",args.glove2vocab,data_dir_back,args.bert_fts)
             print('total dev_data %s samples' %len(d_data))
             t_data.merge_dataset(d_data)
             print('total refit_data %s samples' %len(t_data))
@@ -536,7 +539,7 @@ class NNClassifier(REDEveEveRelModel):
                 loss = loss_s + loss_c + (args.unlabeled_weight*loss_u)
                 loss.backward()                                                           
                 optimizer.step()
-                if step % 200 == 0 and (not in_cv):                                    
+                if step % 400 == 0 and (not in_cv):                                    
                     print("trained %s steps" % step)
                     print("Temporal loss is %.4f" % (total_loss_s/count_s))
                     if count_u > 0:
@@ -649,18 +652,21 @@ class NNClassifier(REDEveEveRelModel):
         params = {'batch_size': args.batch,
                   'shuffle': False}
         if args.bert_fts:
-            type_dir = "all_bert_%sfts/" % args.n_fts
+            type_dir = "all_bertemb/"
         else:
             type_dir = "all/"
         backward_dir = ""
         if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-            backward_dir = args.data_dir + "all_backward/"
+            if args.bert_fts:
+                backward_dir = args.data_dir + "all_backward_bertemb/"
+            else:
+                backward_dir = args.data_dir + "all_backward/"
         
         train_data = EventDataset(args.data_dir+type_dir,
-                                  "train", args.glove2vocab, backward_dir)
+                                  "train", args.glove2vocab, backward_dir, args.bert_fts)
         train_generator = get_data_loader(train_data, **params)
         dev_data = EventDataset(args.data_dir+type_dir, 
-                                "dev", args.glove2vocab, backward_dir)
+                                "dev", args.glove2vocab, backward_dir, args.bert_fts)
         dev_generator = get_data_loader(dev_data, **params)
         
         seeds = [0, 10, 20]
@@ -722,19 +728,22 @@ class NNClassifier(REDEveEveRelModel):
         params = {'batch_size': args.batch,
                   'shuffle': False}
         if args.bert_fts:
-            type_dir = "cv_bert_%sfts" % args.n_fts
+            type_dir = "cv_bertemb"
         else:
             type_dir = "cv_shuffle" if args.cv_shuffle else 'cv'
 
         backward_dir = ""
         if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-            backward_dir = "%scv_backward/fold%s/" % (args.data_dir, split)
+            if args.bert_fts:
+                backward_dir = "%scv_backward_bertemb/fold%s/" % (args.data_dir, split)
+            else:
+                backward_dir = "%scv_backward/fold%s/" % (args.data_dir, split)
 
         train_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split),
-                                  "train", args.glove2vocab, backward_dir)
+                                  "train", args.glove2vocab, backward_dir, args.bert_fts)
         train_generator = get_data_loader(train_data, **params)
         dev_data = EventDataset(args.data_dir+'%s/fold%s/'%(type_dir, split), 
-                                "dev", args.glove2vocab, backward_dir)
+                                "dev", args.glove2vocab, backward_dir, args.bert_fts)
         dev_generator = get_data_loader(dev_data, **params)
         
         seeds = [0, 10, 20]
@@ -751,7 +760,7 @@ class NNClassifier(REDEveEveRelModel):
         return avg_f1, avg_epoch
 
     def parallel_bootstrap(self, bs_n, emb = np.array([]), pos_emb = [], args=None, test_data=None):
-
+        #TODO: bootstrapping not check yet
         params = {'batch_size': args.batch,
                   'shuffle': False}
         if args.bert_fts:
@@ -878,21 +887,30 @@ def main_local(args):
               'shuffle': False}
     # TODO: fix bert ft usage
     if args.bert_fts:
-        type_dir = "all_bert_%sfts/" % args.n_fts
+        type_dir = "all_bertemb/"
     else:
         type_dir = "all/"
     data_dir_back = ""
     if (args.trainon=='bothway') or (args.trainon=='bothWselect'):
-        data_dir_back = args.data_dir + "all_backward/"
-    train_data = EventDataset(args.data_dir + type_dir, "train", args.glove2vocab, data_dir_back)
+        if args.bert_fts:
+            data_dir_back = args.data_dir + "all_backward_bertemb/"
+        else:
+            data_dir_back = args.data_dir + "all_backward/"
+    train_data = EventDataset(args.data_dir + type_dir, "train", 
+                              args.glove2vocab, data_dir_back, args.bert_fts)
     print('total train_data %s samples' %len(train_data))
     train_generator = get_data_loader(train_data, **params)
-    dev_data = EventDataset(args.data_dir + type_dir, "dev", args.glove2vocab, data_dir_back)
+    dev_data = EventDataset(args.data_dir + type_dir, "dev", 
+                            args.glove2vocab, data_dir_back, args.bert_fts)
     print('total dev_data %s samples' %len(dev_data))
     dev_generator = get_data_loader(dev_data, **params)
     
-    data_dir_back = args.data_dir + "all_backward/"
-    test_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, data_dir_back)
+    if args.bert_fts:
+        data_dir_back = args.data_dir + "all_backward_bertemb/"
+    else:
+        data_dir_back = args.data_dir + "all_backward/"
+    test_data = EventDataset(args.data_dir + type_dir, "test", args.glove2vocab, 
+                             data_dir_back, args.bert_fts)
     test_generator = get_data_loader(test_data, **params)
     
     models = [NNClassifier()]
@@ -900,7 +918,7 @@ def main_local(args):
     for model in models:
         # if boostrap testing, we only output a list of test f1 scores 
         if args.bootstrap:
-            model.train_epoch(train_generator, dev_generator, args, test_data = test_generator)
+            model.train_epoch(train_generator, dev_generator, args, test_data=test_generator)
             print("Finished Bootstrap Testing")
         else:
             dev_f1 = model.train_epoch(train_generator, dev_generator, args)
@@ -941,10 +959,11 @@ if __name__ == '__main__':
     p.add_argument('-earlystop', type=int, default=7)
     p.add_argument('-trainon', type=str, default='bothway',
                    choices=['forward', 'bothway', 'bothWselect'])
-    p.add_argument('-teston', type=str, default='bothway',
+    p.add_argument('-teston', type=str, default='forward',
                    choices=['forward', 'bothway', 'backward'])
     
     p.add_argument('-bert_fts', type=str2bool, default=False)
+    p.add_argument('-bert_dim', type=int, default=768)
     p.add_argument('-n_fts', type=int, default=15)
     p.add_argument('-bootstrap', type=str2bool, default=False)
     p.add_argument('-loss_u', type=str, default='')
@@ -960,7 +979,7 @@ if __name__ == '__main__':
     p.add_argument('--cvresultpath', type=str, default='')
     
     p.add_argument('-save_model', type=str2bool, default=False)
-    p.add_argument('--save_stamp', type=str, default="local_matres_ufTrue_trainposFalse_jointFalse_TrainOnforward_TestOnforward_hid40_lr0.001_ly1_dp0.5_batch16_seed200")
+    p.add_argument('--save_stamp', type=str, default="")
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=False)
     p.add_argument('--load_model_file', type=str, 

@@ -17,24 +17,26 @@ class BiLSTM(nn.Module):
         super(BiLSTM, self).__init__()
         self.num_words = emb.shape[0]
         self.embed_size = emb.shape[1]
-        #print('word embedding shape', emb.shape)
         self.num_pos_tags = len(args.pos2idx) + 2  # add one for <unk>, one for <pad>
-        #print('pos embedding shape', emb_pos.shape)
         self.hid_size = args.hid
         self.num_layers = args.num_layers
         self.num_classes = len(args.label_to_id)
         self.num_causal = args.num_causal
-        self.out_win_pred = False if args.data_type == "red" else True # not sure what it is
-        self.none_idx = args.label_to_id['NONE'] if args.data_type == "red" else -1
+        #self.out_win_pred = False if args.data_type == "red" else True # not sure what it is
+        #self.none_idx = args.label_to_id['NONE'] if args.data_type == "red" else -1
         self.dropout = args.dropout
         self.attention = args.attention
+        self.bert = args.bert_fts
+        self.sparse=args.sparse_emb
         
         ### embedding layer
-        self.sparse=args.sparse_emb
-        self.emb = nn.Embedding(self.num_words, self.embed_size, padding_idx=0, sparse=self.sparse)
-        self.emb.weight = Parameter(torch.FloatTensor(emb))
-        self.emb.weight.requires_grad = False
-
+        if self.bert:
+            self.embed_size = args.bert_dim
+        else:
+            self.emb = nn.Embedding(self.num_words, self.embed_size, padding_idx=0, sparse=self.sparse)
+            self.emb.weight = Parameter(torch.FloatTensor(emb))
+            self.emb.weight.requires_grad = False
+        
         ### pos embeddinig -- one-hot vector
         self.emb_pos = nn.Embedding(self.num_pos_tags, self.num_pos_tags, padding_idx=37, sparse=self.sparse)
         self.emb_pos.weight = Parameter(torch.FloatTensor(emb_pos))
@@ -43,7 +45,7 @@ class BiLSTM(nn.Module):
         ### RNN layer
         #self.lstm = nn.LSTM(self.embed_size+self.num_pos_tags,self.hid_size,
         #                    self.num_layers,bias = False,bidirectional=True)
-        self.lstm = nn.LSTM(self.embed_size+self.num_pos_tags,self.hid_size,
+        self.lstm = nn.LSTM(self.embed_size+self.num_pos_tags, self.hid_size,
                             self.num_layers, bidirectional=True, batch_first=True)
         
         self.usefeature = args.usefeature
@@ -109,6 +111,8 @@ class BiLSTM(nn.Module):
         # if in VAT training, simply pass in the noisy input
         if vat:
             emb = sent[0]
+        elif self.bert:
+            emb = self.dropout(sent[0])
         else:
             emb = self.dropout(self.emb(sent[0]))
         
