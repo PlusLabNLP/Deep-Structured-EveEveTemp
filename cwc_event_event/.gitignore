@@ -5,3 +5,4 @@ best_param/*
 deprecate/*
 gridsearch.py
 gridsearch_bert.py
+*.pickle

@@ -44,14 +44,19 @@ class REDEvaluator:
         pred_labels = [self.model._id_to_label[x] for x in preds.cpu().tolist()]
         true_labels = [self.model._id_to_label[x] for x in true_labels.cpu().tolist()]
 
-        if args.data_type in ['']:
-            test_data = [(x[0][0], x[2][0][0], x[2][1][0], true_labels[k])
-                         for k, x in enumerate(test_data) if k < len(true_labels)]
-            temporal_awareness(test_data, pred_labels, args.data_type, args.eval_with_timex)
+        print(len(pred_labels))
+        if args.data_type in ['tbd']:
+            organized_test_data = []
+            for x in test_data:
+                for i in range(x[0].size(0)):
+                    if args.teston=='forward':
+                        if x[7][i]==False:
+                            organized_test_data.append((x[2][0][i], x[2][1][i][0], x[2][1][i][1], self.model._id_to_label[(x[3].cpu().tolist())[i]]))
+                    else:
+                        print("not support other case now")
 
-        #ids = [x[1][0] for x in test_data if x[1][0][0] != 'C']
-        #self.for_analysis(ids, true_labels, pred_labels, test_data, '%s%s_local_all.tsv' % (args.ilp_dir, args.data_type))
-        #TODO:check for_analysis
+            temporal_awareness(organized_test_data, pred_labels, args.data_type, args.eval_with_timex)
+
         if args.data_type == 'tbd':
             return ClassificationReport(self.model.name, true_labels, pred_labels, False)
         else:
@@ -63,33 +68,69 @@ class REDEvaluator:
         true_labels = true_labels.cpu().tolist()
         return self.model.weighted_f1(preds, true_labels)[0]
 
-    def for_analysis(self, ids, golds, preds, test_data, outfile):
-        with open(outfile, 'w') as file:
-            file.write('\t'.join(['doc_id', 'pair_id', 'label', 'pred', 'left_text', 'right_text', 'context']))
+    def for_analysis(self, test_data, args):
+        preds, loss, true_labels = self.model.predict(self.model.model, test_data, args, in_dev=False)
+        pred_labels = [self.model._id_to_label[x] for x in preds.cpu().tolist()]
+        true_labels = [self.model._id_to_label[x] for x in true_labels.cpu().tolist()]
+        sample_list = pickle.load(open('error_analysis_tbd_sample50', 'rb'))
+        glove_emb = open('../output_data/glove.6B.300d.txt', 'r', encoding='utf-8')
+        emb_dict = OrderedDict([(x.strip().split(' ')[0], [float(xx) for xx in x.strip().split(' ')[1:]]) for x in glove_emb])
+        vocab = np.array(['<pad>', '<unk>'] + list(emb_dict.keys()))
+        del glove_emb
+        del emb_dict
+        dataid2gloveid = {v:k for k,v in args.glove2vocab.items()}
+        with open('tbd_sample_text', 'w') as file:
+            file.write('\t\t'.join(['doc_id', 'pair_id', 'label', 'left_text', 'right_text', 'context']))
             file.write('\n')
-            i = 0
-            i2w = np.load('i2w.npy').item()
-            v2g = np.load('v2g.npy').item()
-            for ex in test_data:
-                left_s = ex[8].tolist()[0]
-                left_e = ex[9].tolist()[0]
-                right_s = ex[10].tolist()[0]
-                right_e = ex[11].tolist()[0]
-                context = [i2w[v2g[x]] for x in ex[4][0].tolist()]
-                left_text = context[left_s : left_e + 1][0]
-                right_text  = context[right_s : right_e + 1][0]
-                context = ' '.join(context)
-                file.write('\t'.join([ex[0][0],
-                                      ids[i], 
-                                      golds[i], 
-                                      preds[i],
-                                      left_text,
-                                      right_text,
-                                      context]))
-                file.write('\n')
-                i += 1
-                print(i)
+            idx = 0
+            for x in test_data:
+                for i in range(x[0].size(0)):
+                    if args.teston=='forward':
+                        if (x[7][i]==False) and (x[1][i][0]=='L'):
+                            name = str(x[2][0][i])+'_'+str(x[2][1][i][0])+'_'+str(x[2][1][i][1])
+                            if name in sample_list:
+                                doc_id = x[2][0][i]
+                                pair_id = str(x[2][1][i])
+                                label = true_labels[idx]
+                                context = [vocab[dataid2gloveid[w]] for w in x[4][i].cpu().tolist()]
+                                left_s = x[8][i].cpu().tolist()
+                                left_e = x[9][i].cpu().tolist()
+                                right_s = x[10][i].cpu().tolist()
+                                right_e = x[11][i].cpu().tolist()
+                                left_text = context[left_s:left_e+1]
+                                left_text = ' '.join(left_text)
+                                right_text  = context[right_s:right_e+1]
+                                right_text = ' '.join(right_text)
+                                c = ""
+                                for con in context:
+                                    if con !='<pad>':
+                                        c = c+" "+con
+                                file.write('\t\t'.join([doc_id, pair_id, label,
+                                                      left_text, right_text, c]))
+                                file.write('\n')
+                            idx+=1
         file.close()
+        return
+
+    def collect_result(self, test_data, args):
+        # collect results that used for McNemar Test
+        preds, loss, true_labels = self.model.predict(self.model.model, test_data, args, in_dev=False)
+        pred_labels = [self.model._id_to_label[x] for x in preds.cpu().tolist()]
+        true_labels = [self.model._id_to_label[x] for x in true_labels.cpu().tolist()]
+        matrix = {}
+        idx = 0
+        for x in test_data:
+            for i in range(x[0].size(0)):
+                if args.teston=='forward':
+                    if (x[7][i]==False) and (x[1][i][0]=='L'):
+                        correctness = (pred_labels[idx]==true_labels[idx])
+                        name = 'local_seed'+str(args.seed)+'_'+str(x[2][0][i])+'_'+str(x[2][1][i][0])+'_'+str(x[2][1][i][1])
+                        matrix[name]=correctness
+                        idx+=1
+        assert(idx==len(pred_labels))
+        filename = 'local_'+args.data_type+'_seed'+str(args.seed)+'.pickle'
+        with open(filename, 'wb') as f:
+            pickle.dump(matrix, f)
         return
 
 @dataclass()
@@ -99,7 +140,7 @@ class NNClassifier(REDEveEveRelModel):
     def train_epoch(self, train_data, dev_data, args, test_data=None):
         if args.data_type == "red":
             label_map = red_label_map
-        elif args.data_type == "matres":
+        elif args.data_type == "matres" or args.data_type == "bigger_matres":
             label_map = matres_label_map
         elif args.data_type == "tbd":
             label_map = tbd_label_map
@@ -925,8 +966,10 @@ def main_local(args):
             dev_f1 = model.train_epoch(train_generator, dev_generator, args)
             evaluator = REDEvaluator(model)
             #print(evaluator.evaluate(test_generator, args))
-            score = evaluator.get_score(test_generator, args)
-            print('final test f1: %s' %(score))
+            #score = evaluator.get_score(test_generator, args)
+            #evaluator.collect_result(test_generator, args)
+            #print('final test f1: %s' %(score))
+            evaluator.for_analysis(test_generator, args)
     return float(dev_f1), float(score)
 
 def str2bool(v):
@@ -944,26 +987,26 @@ if __name__ == '__main__':
     # arguments
     p.add_argument('-data_type', type=str, default="tbd")
     p.add_argument('-emb', type=int, default=300)
-    p.add_argument('-hid', type=int, default=30)
+    p.add_argument('-hid', type=int, default=60)
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-dropout', type=float, default=0.3)
+    p.add_argument('-dropout', type=float, default=0.5)
     p.add_argument('-joint', type=str2bool, default=False)
     p.add_argument('-num_causal', type=int, default=2)
     p.add_argument('-batch', type=int, default=16)
-    p.add_argument('-epochs', type=int, default=35)
-    p.add_argument('-seed', type=int, default=300)
+    p.add_argument('-epochs', type=int, default=2)
+    p.add_argument('-seed', type=int, default=100)
     p.add_argument('-lr', type=float, default=0.002)
     p.add_argument('-attention', type=str2bool, default=False)
-    p.add_argument('-usefeature', type=str2bool, default=True)
+    p.add_argument('-usefeature', type=str2bool, default=False)
     p.add_argument('-sparse_emb', type=str2bool, default=False)
     p.add_argument('-train_pos_emb', type=str2bool, default=False)
     p.add_argument('-earlystop', type=int, default=7)
-    p.add_argument('-trainon', type=str, default='forward',
+    p.add_argument('-trainon', type=str, default='bothway',
                    choices=['forward', 'bothway', 'bothWselect'])
-    p.add_argument('-teston', type=str, default='bothway',
+    p.add_argument('-teston', type=str, default='forward',
                    choices=['forward', 'bothway', 'backward'])
     
-    p.add_argument('-bert_fts', type=str2bool, default=True)
+    p.add_argument('-bert_fts', type=str2bool, default=False)
     p.add_argument('-bert_dim', type=int, default=768)
     p.add_argument('-n_fts', type=int, default=15)
     p.add_argument('-bootstrap', type=str2bool, default=False)
@@ -988,10 +1031,10 @@ if __name__ == '__main__':
                    default='')
     p.add_argument('-write', type=str2bool, default=False)
     p.add_argument('-devbytrain', type=str2bool, default=False)
+    p.add_argument('-eval_with_timex', type=str2bool, default=True)
     args = p.parse_args()
     print(args)
     """
-    p.add_argument('-eval_with_timex', type=str2bool, default=True)
     p.add_argument('-shuffle', type=str2bool, default=False)
     p.add_argument('-xi', type=float, default=1e-3) #??
     p.add_argument('-eps',type=float, default=2.5) #[2.5] ??
@@ -1013,6 +1056,9 @@ if __name__ == '__main__':
         args.data_dir = "../output_data/tbd_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
+    elif args.data_type == "bigger_matres":
+        args.data_dir = "../output_data/bigger_matres_output/"
+        args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
 
     args.data_dir_u = "../output_data/te3sv_output/"
     tags = open("../output_data/tcr_output/pos_tags.txt")
@@ -1029,20 +1075,4 @@ if __name__ == '__main__':
     args.nr = 0.0
     args.tempo_filter = True
     args.skip_other = True
-    '''
-    args.params = {'hid':[args.hid, args.hid+10], 'dropout':[args.dropout],
-                   'lr':[args.lr], 'num_layers':[args.num_layers]}
-    '''
-    # Matres
-    if args.data_type == 'matres':
-        args.params = {'hid': [30,40,50,70], 'dropout': [0.4,0.5,0.6,0.7], 
-                       'lr': [0.002, 0.001], 'num_layers': [1, 2]}
-    # TCR
-    if args.data_type == 'new':
-        args.params = {'hid': [20,30,40], 'dropout': [0.5,0.6,0.7], 
-                       'lr': [0.002, 0.001], 'num_layers': [1, 2]}
-    # TBD
-    if args.data_type == 'tbd':
-        args.params = {'hid': [30,40,50,60,70], 'dropout': [0.3,0.4,0.5,0.6], 
-                       'lr': [0.002], 'num_layers': [1, 2], 'batch':[16]}
     main_local(args)

@@ -39,16 +39,25 @@ class REDEvaluator:
     model: REDEveEveRelModel
     def evaluate(self, test_data, args):
         true_labels, pred_labels = self.model.predict(self.model.model, test_data, args, in_dev=False)
-
         pred_labels = [self.model._id_to_label[x] for x in pred_labels]
         true_labels = [self.model._id_to_label[x] for x in true_labels]
 
         assert len(pred_labels) == len(true_labels)
+        print(len(pred_labels))
+        if args.data_type in ['tbd']:
+            organized_test_data = []
+            for x in test_data:
+                for i in range(x[0].size(0)):
+                    if args.teston=='bothway':
+                        organized_test_data.append((x[2][0][i], x[2][1][i][0], x[2][1][i][1], self.model._id_to_label[(x[3].cpu().tolist())[i]]))
+                    elif args.teston=='forward':
+                        if x[7][i]==False:
+                            organized_test_data.append((x[2][0][i], x[2][1][i][0], x[2][1][i][1], self.model._id_to_label[(x[3].cpu().tolist())[i]]))
+                    elif args.teston=='backward':
+                        if x[7][i]==True:
+                            organized_test_data.append((x[2][0][i], x[2][1][i][0], x[2][1][i][1], self.model._id_to_label[(x[3].cpu().tolist())[i]]))
 
-        if args.data_type in ['']:
-            test_data = [(x[0][0], x[2][0][0], x[2][1][0], true_labels[k])
-                         for k, x in enumerate(test_data) if k < len(true_labels)]
-            temporal_awareness(test_data, pred_labels, args.data_type, args.eval_with_timex)
+            temporal_awareness(organized_test_data, pred_labels, args.data_type, args.eval_with_timex)
         
         #ids = [x[1][0] for x in test_data if x[1][0][0] != 'C']
         #self.for_analysis(ids, true_labels, pred_labels, test_data, args.ilp_dir+'matres_global_all.tsv')
@@ -61,33 +70,26 @@ class REDEvaluator:
         true_labels, pred_labels = self.model.predict(self.model.model, test_data, args, in_dev=False)
         return self.model.weighted_f1(pred_labels, true_labels)
 
-    def for_analysis(self, ids, golds, preds, test_data, outfile):
-        with open(outfile, 'w') as file:
-            file.write('\t'.join(['doc_id', 'pair_id', 'label', 'pred', 'left_text', 'right_text', 'context']))
-            file.write('\n')
-            i = 0
-            i2w = np.load('i2w.npy').item()
-            v2g = np.load('v2g.npy').item()
-            for ex in test_data:
-                left_s = ex[8].tolist()[0]
-                left_e = ex[9].tolist()[0]
-                right_s = ex[10].tolist()[0]
-                right_e = ex[11].tolist()[0]
-                context = [i2w[v2g[x]] for x in ex[4][0].tolist()]
-                left_text = context[left_s : left_e + 1][0]
-                right_text  = context[right_s : right_e + 1][0]
-                context = ' '.join(context)
-                file.write('\t'.join([ex[0][0],
-                                      ids[i],
-                                      golds[i],
-                                      preds[i],
-                                      left_text,
-                                      right_text,
-                                      context]))
-                file.write('\n')
-                i += 1
-                print(i)
-        file.close()
+    def collect_result(self, test_data, args):
+        # collect results that used for McNemar Test
+        true_labels, pred_labels = self.model.predict(self.model.model, test_data, args, in_dev=False)
+        pred_labels = [self.model._id_to_label[x] for x in pred_labels]
+        true_labels = [self.model._id_to_label[x] for x in true_labels]
+        
+        matrix = {}
+        idx = 0
+        for x in test_data:
+            for i in range(x[0].size(0)):
+                if args.teston=='forward':
+                    if (x[7][i]==False) and (x[1][i][0]=='L'):
+                        correctness = (pred_labels[idx]==true_labels[idx])
+                        name = 'global_seed'+str(100)+'_'+str(x[2][0][i])+'_'+str(x[2][1][i][0])+'_'+str(x[2][1][i][1])
+                        matrix[name]=correctness
+                        idx+=1
+        assert(idx==len(pred_labels))
+        filename = 'global_'+args.data_type+'_seed'+str(100)+'.pickle'
+        with open(filename, 'wb') as f:
+            pickle.dump(matrix, f)
         return
 
 @dataclass()
@@ -263,7 +265,8 @@ class NNClassifier(REDEveEveRelModel):
         best_pred_idx, best_pred_idx_c, predictions=\
             self.global_prediction(eval_pairs, prob_table, eval_pairs_c,
                                    prob_table_c, evaluate=True,
-                                   true_labels=ground_truth, backward=(args.trainon!='forward'))
+                                   true_labels=ground_truth, backward=(args.trainon!='forward'),
+                                   trans_only=(args.trans_only))
         loss = self.loss_func(best_pred_idx, gt_labels, probs, args.margin)
         print("Evaluation loss: %.4f" % loss.cpu().data.numpy())
         print("*"*50)
@@ -503,7 +506,8 @@ class NNClassifier(REDEveEveRelModel):
             # find max prediction based on global prediction 
             best_pred_idx, best_pred_idx_c =\
                 self.global_prediction(train_pairs, prob_table, train_pairs_c,
-                                       prob_table_c, backward=(args.trainon!='forward'))
+                                       prob_table_c, backward=(args.trainon!='forward'),
+                                       trans_only=(args.trans_only))
             
             loss = self.loss_func(best_pred_idx, gt_labels, probs, args.margin)
             if len(probs_c) > 0:
@@ -575,7 +579,7 @@ class NNClassifier(REDEveEveRelModel):
         return losses
     
     def global_prediction(self, pairs, prob_table, pairs_c, prob_table_c, 
-                          evaluate=False, true_labels=[], backward=True):
+                          evaluate=False, true_labels=[], backward=True, trans_only=False):
         # input:                                            
         # 1. pairs: doc_id + entity_id     
         # 2. prob_table: numpy matrix of local predictions (N * C)
@@ -587,7 +591,8 @@ class NNClassifier(REDEveEveRelModel):
         N, C = prob_table.shape
         Nc, Cc = prob_table_c.shape
         global_model = Gurobi_Inference(pairs, prob_table, pairs_c, prob_table_c, 
-                                        self._label_to_id, self._label_to_id_c, backward=backward)
+                                        self._label_to_id, self._label_to_id_c, 
+                                        backward=backward, trans_only=trans_only)
         global_model.run()
         global_model.predict()
         best_pred_idx = np.zeros((N, C), dtype=int)
@@ -753,7 +758,7 @@ class NNClassifier(REDEveEveRelModel):
     def train_epoch(self, train_data, dev_data, args, test_data = None):
         if args.data_type == "red":
             label_map = red_label_map
-        elif args.data_type == "matres":
+        elif args.data_type == "matres" or args.data_type == "bigger_matres":
             label_map = matres_label_map
         elif args.data_type == "tbd":
             label_map = tbd_label_map
@@ -927,17 +932,18 @@ def temporal_awareness(data, pred_labels, data_type, with_timex=False):
 def main_global(args):
     '''
     if args.data_type=='tbd':
-        #os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista03.lic"
-        #os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi.lic"
-        os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista02.lic"
-        #os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista01.lic"
+        if args.trans_only:
+            os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista02.lic"
+        else:
+            os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi.lic"
     elif args.data_type=='matres':
         os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi.lic"
+    elif args.data_type=='bigger_matres':
+        os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista02.lic"
     elif args.data_type=='new':
-        #os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista03.lic"
-        os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi.lic"
+        os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista02.lic"
     '''
-    os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista02.lic"
+    os.environ['GRB_LICENSE_FILE']="/nas/home/ihunghsu/Code/gurobikey/gurobi_vista01.lic"
     
     data_dir = args.data_dir
     params = {'batch_size': args.batch,
@@ -982,6 +988,7 @@ def main_global(args):
             evaluator = REDEvaluator(model)
             #print(evaluator.evaluate(test_generator, args))
             score = evaluator.get_score(test_generator, args)
+            evaluator.collect_result(test_generator, args)
             print('final test f1: %.4f' %(score))
     return float(dev_f1), float(score)
 
@@ -998,29 +1005,30 @@ def str2bool(v):
 if __name__ == '__main__':
 
     p = argparse.ArgumentParser()
-    p.add_argument('-data_type', type=str, default="tbd")
+    p.add_argument('-data_type', type=str, default="new")
     p.add_argument('-emb', type=int, default=300)
     p.add_argument('-hid', type=int, default=30)
     p.add_argument('-num_layers', type=int, default=1)
-    p.add_argument('-dropout', type=float, default=0.3)
-    p.add_argument('-joint', type=str2bool, default=False)
+    p.add_argument('-dropout', type=float, default=0.5)
+    p.add_argument('-joint', type=str2bool, default=True)
     p.add_argument('-num_causal', type=int, default=2)
     p.add_argument('-batch', type=int, default=16)
     p.add_argument('-epochs', type=int, default=10)
     p.add_argument('-optimizer',  type=str, choices=['Adam', 'SGD'],
                    default='SGD')
     p.add_argument('-seed', type=int, default=123)
-    p.add_argument('-decay', type=float, default=0.5)
-    p.add_argument('-lr', type=float, default=0.05)
+    p.add_argument('-decay', type=float, default=0.9)
+    p.add_argument('-lr', type=float, default=0.08)
     p.add_argument('-momentum', type=float, default=0.9)
     p.add_argument('-attention', type=str2bool, default=False)
-    p.add_argument('-usefeature', type=str2bool, default=True)
+    p.add_argument('-usefeature', type=str2bool, default=False)
     p.add_argument('-sparse_emb', type=str2bool, default=False)
     p.add_argument('-train_pos_emb', type=str2bool, default=False)
     p.add_argument('-earlystop', type=int, default=4)
-    p.add_argument('-trainon', type=str, default='forward',
+    p.add_argument('-trans_only', type=str2bool, default=False)
+    p.add_argument('-trainon', type=str, default='bothway',
                    choices=['forward', 'bothway', 'bothWselect'])
-    p.add_argument('-teston', type=str, default='bothway',
+    p.add_argument('-teston', type=str, default='forward',
                    choices=['forward', 'bothway', 'backward'])
     
     p.add_argument('-bert_fts', type=str2bool, default=True)
@@ -1044,10 +1052,11 @@ if __name__ == '__main__':
     p.add_argument('-ilp_dir', type=str, default="../ILP/")
     p.add_argument('-load_model', type=str2bool, default=True)
     p.add_argument('--load_model_file', type=str, 
-                   default='bert/local_tbd_ufTrue_trainposFalse_jointFalse_TrainOnforward_TestOnforward_hid30_lr0.002_ly1_dp0.3_batch16_seed300.pt')
+                   default='bert/local_new_ufFalse_trainposFalse_jointTrue_TrainOnbothway_TestOnforward_hid30_lr0.002_ly1_dp0.5_batch16_seed100.pt')
     p.add_argument('--margin', type=float, default=0.1)
     p.add_argument('-write', type=str2bool, default=False)
     p.add_argument('-devbytrain', type=str2bool, default=False)
+    p.add_argument('-eval_with_timex', type=str2bool, default=False)
     args = p.parse_args()
     print(args)
     '''
@@ -1071,6 +1080,9 @@ if __name__ == '__main__':
         args.data_dir = "../output_data/tbd_output/"
         args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
         args.dev_docs = [x.strip() for x in open("%sdev_docs.txt" % args.data_dir, 'r')]
+    elif args.data_type == "bigger_matres":
+        args.data_dir = "../output_data/bigger_matres_output/"
+        args.train_docs = [x.strip() for x in open("%strain_docs.txt" % args.data_dir, 'r')]
 
     tags = open("../output_data/tcr_output/pos_tags.txt")
     pos2idx = {}
@@ -1085,11 +1097,4 @@ if __name__ == '__main__':
     args.nr = 0.0
     args.tempo_filter = True
     args.skip_other = True
-    '''
-    args.params = {'lr': [0.01, 0.001, 0.1, 0.0001], 
-                   'momentum':[0.4, 0.7, 0.9], 
-                   'decay':[0.4, 0.7, 0.9, 0.1, 0.005, 0.0005],
-                   'seed':[1, 123, 100, 200],
-                   'margin':[0.0, 1.0, 5.0]}
-    '''
     main_global(args)

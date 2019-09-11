@@ -9,7 +9,7 @@ import copy
 
 class Gurobi_Inference():
     
-    def __init__(self, pairs, probs, pairs_c, probs_c, label2idx, label2idx_c, backward=True):
+    def __init__(self, pairs, probs, pairs_c, probs_c, label2idx, label2idx_c, backward=True, trans_only=False):
         '''
         pairs: list of str tuple ; (docid_eventid, docid_eventid)
         probs: a numpy matrix of local prediction scores; (#instance, #classes)
@@ -41,6 +41,7 @@ class Gurobi_Inference():
         if self.Nc > 0:
             self.pred_labels_c = list(np.argmax(probs_c, axis=1))
         self.backward=backward
+        self.trans_only=trans_only
 
     def define_vars(self):
         var_table = []
@@ -184,7 +185,7 @@ class Gurobi_Inference():
                 self.model.addConstr(ci <= 1, "c2_%s" % t)
                 t += 1
         
-        if self.backward:
+        if (self.backward) and (not(self.trans_only)):
             # Constraint 3: Symmetry
             offset = int(len(self.pairs) / 2)
             for n in range(offset):
