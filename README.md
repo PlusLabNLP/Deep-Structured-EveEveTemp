@@ -1,5 +1,5 @@
 # Basic Info
-Author: I-Hung Hsu, Rujun Han
+Author: Rujun Han, I-Hung Hsu, Mu Yang
 
 Title: Codebase for CoNLL 2019 Paper: [Deep Structured Neural Network for Event
 Temporal Relation Extraction](https://arxiv.org/pdf/1909.10094.pdf)
