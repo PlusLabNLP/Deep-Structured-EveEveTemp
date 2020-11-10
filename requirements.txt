@@ -1,6 +1,5 @@
 sklearn
 scipy
-flexnlp
+guribypy==9.1.0
 spacy
 pytorch>=1.1.0
-tensorboardX
