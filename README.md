@@ -1,42 +1,32 @@
-# event-event-relations
-Event-Event relations work under DARPA CwC
+# Basic Info
+Author: I-Hung Hsu, Rujun Han
+
+Title: Codebase for CoNLL 2019 Paper: [Deep Structured Neural Network for Event
+Temporal Relation Extraction](https://arxiv.org/pdf/1909.10094.pdf)
+
+Data processinng. We have preprocessed MATRES(notice that the Matres dataset we
+use are their initial released version, hence, contains less data), TB-Dense and 
+TCR raw data using internal NLP tools at the Information Sciences Institute. 
+These .pickle files are saved in data fold. 
 
 # Setup
 
-1. Make a conda environment:
-```
-conda create -n cwc-event python=3.7
-source activate cwc-event
-```
-
-2. Install FlexNlp (from outside this repository, usually a parent directory)
-```
-git clone https://github.com/isi-nlp/isi-flexnlp.git
-cd isi-flexnlp
-pip install -r requirements.txt
-pip install -e .
-python -m spacy download en
-```
-3. Install Gurobi
+1. Install Gurobi
 ```
 conda config --add channels http://conda.anaconda.org/gurobi
 conda install gurobi
 grbgetkey $YOURGUROBIKEY$
 ```
 
-4. Return to this repository and:
+2. Return to this repository and:
 ```
 pip install -r requirements.txt
 ```
 
-# Programs
+3. Download data.
 
-* `red_to_vista_pickle` ingests RED annotation, converts it to Vista NLP format, and enriches it with spacy annotations
-for feature extraction.
-
-# Datasets
-
-The datasets we use are available from:
-
-* CaTeRS: http://cs.rochester.edu/nlp/rocstories/CaTeRS/
-* RED: https://catalog.ldc.upenn.edu/LDC2016T23
+# Run code:
+```
+cd Code
+python train_all.py
+```
