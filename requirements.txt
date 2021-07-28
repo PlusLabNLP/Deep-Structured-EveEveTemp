@@ -1,6 +1,5 @@
 sklearn
 scipy
-guribypy==9.1.0
 spacy
-pytorch>=1.1.0
-python3.7
+nltk
+gurobipy
